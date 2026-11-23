@@ -12,6 +12,7 @@ using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using U9.Formats.Flx;
+using U9.Formats.Models;
 using U9.Formats.Objects;
 using U9.Formats.Terrain;
 using U9.Formats.Triggers;
@@ -24,7 +25,9 @@ namespace U9Editor.App
     {
         readonly Settings settings = Settings.Load();
         GameFolder game;
-        FlxArchive bitmaps;
+        FlxArchive bitmaps, appearances;
+        TypeTable typeTable;
+        ModelScene modelScene;
         TypeNames typeNames;
         MapLinks mapLinks;
         ObjectMap currentNonfixed;
@@ -57,7 +60,7 @@ namespace U9Editor.App
             AddHandler(KeyUpEvent, (s, e) => View.CameraKeyUp(e), RoutingStrategies.Tunnel);
             Opened += (s, e) => OpenAtStart();
             Closing += (s, e) => settings.Save();
-            Closed += (s, e) => bitmaps?.Dispose();
+            Closed += (s, e) => { bitmaps?.Dispose(); appearances?.Dispose(); };
         }
 
         void OpenAtStart()
@@ -91,6 +94,12 @@ namespace U9Editor.App
             bitmaps = null;
             string bmpPath = Path.Combine(g.StaticFolder, "bitmap16.flx");
             if (File.Exists(bmpPath)) bitmaps = FlxArchive.Open(bmpPath);
+            appearances?.Dispose();
+            appearances = null;
+            string sapPath = Directory.EnumerateFiles(g.StaticFolder, "sappear.flx", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault();
+            if (sapPath != null) appearances = FlxArchive.Open(sapPath);
+            string typesPath = Directory.EnumerateFiles(g.StaticFolder, "types.dat", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault();
+            typeTable = typesPath != null ? TypeTable.Load(typesPath) : null;
             string namesPath = Directory.EnumerateFiles(g.StaticFolder, "typename.flx", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault();
             typeNames = namesPath != null ? TypeNames.Load(namesPath) : null;
             string trigPath = Directory.EnumerateFiles(g.StaticFolder, "triggers.flx", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault();
@@ -126,6 +135,12 @@ namespace U9Editor.App
             var objects = LoadObjects(m.Number, space);
             View.SetObjects(objects);
             ShowLinks(m, objects);
+            modelScene = null;
+            if (appearances != null && bitmaps != null && typeTable != null)
+            {
+                modelScene = ModelScene.Build(objects, space, typeTable, i => i < appearances.Count ? appearances.Read(i) : null, i => i < bitmaps.Count ? bitmaps.Read(i) : null);
+                View.SetModels(modelScene);
+            }
             TerrainTextures textures = null;
             if (bitmaps != null)
             {
@@ -137,7 +152,8 @@ namespace U9Editor.App
             MapInfo.Text = $"{terrain.Width}x{terrain.Height} points, {terrain.Chunks.Count} chunks, water at height {terrain.WaterHeight}, " +
                            $"waves {terrain.WaveAmplitude}, flags 0x{terrain.Flags:X}, " +
                            $"{textures?.Layers.Count ?? 0} texture frames, " +
-                           $"{View.Objects?.All.Count(o => o.Kind == ObjectFileKind.Fixed) ?? 0} fixed and {View.Objects?.All.Count(o => o.Kind == ObjectFileKind.Nonfixed) ?? 0} nonfixed objects" + (textures?.Missing.Count > 0 ? $" ({textures.Missing.Count} missing)" : "");
+                           $"{View.Objects?.All.Count(o => o.Kind == ObjectFileKind.Fixed) ?? 0} fixed and {View.Objects?.All.Count(o => o.Kind == ObjectFileKind.Nonfixed) ?? 0} nonfixed objects, " +
+                           $"{modelScene?.Batches.Count ?? 0} models ({modelScene?.Triangles ?? 0} triangles)" + (textures?.Missing.Count > 0 ? $" ({textures.Missing.Count} missing)" : "");
             StatusText.Text = "Left drag orbits, middle or Shift+drag pans, wheel zooms, W/A/S/D move, Q/E turn, click selects a point.";
         }
 
@@ -298,6 +314,9 @@ namespace U9Editor.App
         void OnColourHeight(object sender, RoutedEventArgs e) => SetColour(ViewState.Colouring.Height);
         void OnColourTexture(object sender, RoutedEventArgs e) => SetColour(ViewState.Colouring.TextureNumber);
         void OnColourFlags(object sender, RoutedEventArgs e) => SetColour(ViewState.Colouring.Flags);
+        void OnToggleTerrain(object sender, RoutedEventArgs e) { View.State.ShowTerrain = TerrainItem.IsChecked; View.Redraw(); }
+        void OnToggleUnseen(object sender, RoutedEventArgs e) { View.State.HideUnseen = UnseenItem.IsChecked; View.Redraw(); }
+        void OnToggleModels(object sender, RoutedEventArgs e) { View.State.ShowModels = ModelsItem.IsChecked; View.Redraw(); }
         void OnToggleFixed(object sender, RoutedEventArgs e) { View.State.ShowFixed = FixedItem.IsChecked; View.Redraw(); }
         void OnToggleNonfixed(object sender, RoutedEventArgs e) { View.State.ShowNonfixed = NonfixedItem.IsChecked; View.Redraw(); }
         void OnToggleWater(object sender, RoutedEventArgs e) { View.State.ShowWater = WaterItem.IsChecked; View.Redraw(); }

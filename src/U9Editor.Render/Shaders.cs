@@ -55,6 +55,8 @@ uniform usampler2D uLookup;   // (frame, texture) -> layer + 1
 uniform int uHaveTextures;
 uniform int uUvRotate;        // debug: quarter turns applied to every quad's texture
 uniform int uUvFlipV;         // debug: texture rows run the other way
+uniform int uHideUnseen;      // drop quads with texture 29, which the game never shows (dungeon and cave filler)
+uniform int uShowTerrain;
 uniform float uWaterY;
 uniform float uMaxY;
 uniform int uHoleMode;        // 0 cut out, 1 show in magenta
@@ -87,6 +89,8 @@ void main()
     uint raw = texelFetch(uPoints, q, 0).r;
     bool hole = (raw & 0x1000u) != 0u;
     if (hole && uHoleMode == 0) discard;
+    if (uShowTerrain == 0) discard;
+    if (uHideUnseen == 1 && (raw >> 22) == 29u) discard;
 
     vec3 base = vec3(0.5);
     if (uColourMode == 3 && uHaveTextures == 1)
@@ -134,10 +138,12 @@ uniform mat4 uViewProj;
 uniform float uPointScale;
 uniform int uHover;
 uniform int uSelected;
+uniform int uOnlyZones;       // models are shown: mark only the map-change zones
 out vec3 vColour;
 void main()
 {
     gl_Position = uViewProj * vec4(aPos, 1.0);
+    if (uOnlyZones == 1 && aKind < 1.5) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     int id = int(aId + 0.5);
     float size = clamp(uPointScale / gl_Position.w, 3.0, 14.0);
     vColour = aKind < 0.5 ? vec3(1.0, 0.62, 0.15) : aKind < 1.5 ? vec3(0.25, 0.9, 1.0) : vec3(1.0, 0.95, 0.1);
@@ -156,6 +162,66 @@ void main()
     float r = dot(d, d);
     if (r > 0.25) discard;
     fragColour = vec4(r > 0.16 ? vColour * 0.35 : vColour, 1.0);
+}";
+
+        // Object models: instanced, one draw per model; the instance's model-to-world matrix comes in as 4 vec4s.
+        public const string ModelVertex = @"
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec2 aUv;
+layout(location = 3) in float aLayer;
+layout(location = 4) in vec4 aColour;
+layout(location = 5) in vec4 aM0;
+layout(location = 6) in vec4 aM1;
+layout(location = 7) in vec4 aM2;
+layout(location = 8) in vec4 aM3;
+layout(location = 9) in float aId;
+uniform mat4 uViewProj;
+uniform int uSelected;
+uniform int uHover;
+out vec3 vNormal;
+out vec2 vUv;
+out float vLayer;
+out vec4 vColour;
+flat out int vMark;
+void main()
+{
+    mat4 m = mat4(aM0, aM1, aM2, aM3);
+    gl_Position = uViewProj * m * vec4(aPos, 1.0);
+    vNormal = mat3(m) * aNormal;
+    vUv = aUv;
+    vLayer = aLayer;
+    vColour = aColour;
+    int id = int(aId + 0.5);
+    vMark = id == uSelected ? 2 : (id == uHover ? 1 : 0);
+}";
+
+        public const string ModelFragment = @"
+in vec3 vNormal;
+in vec2 vUv;
+in float vLayer;
+in vec4 vColour;
+flat in int vMark;
+uniform sampler2DArray uTexA;
+uniform sampler2DArray uTexB;
+uniform int uSplit;
+out vec4 fragColour;
+void main()
+{
+    vec4 c = vColour;
+    int layer = int(vLayer + 0.5);
+    if (vLayer >= -0.5)
+    {
+        c = layer < uSplit ? texture(uTexA, vec3(vUv, float(layer))) : texture(uTexB, vec3(vUv, float(layer - uSplit)));
+        if (c.a < 0.5) discard;
+    }
+    vec3 n = normalize(vNormal);
+    vec3 sun = normalize(vec3(-0.45, 0.8, 0.35));
+    float light = 0.4 + 0.6 * abs(dot(n, sun));
+    vec3 col = c.rgb * light;
+    if (vMark == 2) col = mix(col, vec3(1.0, 0.2, 0.9), 0.55);
+    else if (vMark == 1) col = mix(col, vec3(1.0), 0.35);
+    fragColour = vec4(col, 1.0);
 }";
 
         public const string WaterVertex = @"

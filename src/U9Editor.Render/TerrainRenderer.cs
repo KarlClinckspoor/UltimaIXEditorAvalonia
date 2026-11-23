@@ -20,6 +20,11 @@ namespace U9Editor.Render
         public int HoverX = -1, HoverRow = -1;
         public int SelectedX = -1, SelectedRow = -1;
         public bool ShowFixed = true, ShowNonfixed = true;
+        /// <summary>Draw object models (and markers only for objects without one, plus link zones), or markers for all.</summary>
+        public bool ShowModels = true;
+        public bool ShowTerrain = true;
+        /// <summary>Drop terrain quads with texture 29, which the game never shows.</summary>
+        public bool HideUnseen = true;
         public int HoverObject = -1, SelectedObject = -1;
     }
 
@@ -38,6 +43,11 @@ namespace U9Editor.Render
         GL gl;
         uint terrainProg, waterProg, markerProg;
         uint markerVao, markerVbo;
+        uint modelProg, modelVao, modelVbo, instVbo, modelTexA, modelTexB;
+        int modelSplit = 2048;
+        ModelScene pendingModels, models;
+        bool modelsReady;
+        readonly List<(int First, int Count, int InstFirst, int InstCount)> modelDraws = new List<(int, int, int, int)>();
         int markerFixed, markerNonfixed;
         float[] pendingMarkers;
         int pendingFixed;
@@ -66,6 +76,14 @@ namespace U9Editor.Render
             gles = isGles;
             string h = Shaders.Header(isGles);
             markerProg = Program(h + Shaders.MarkerVertex, h + Shaders.MarkerFragment);
+            modelProg = Program(h + Shaders.ModelVertex, h + Shaders.ModelFragment);
+            modelVao = gl.GenVertexArray();
+            modelVbo = gl.GenBuffer();
+            instVbo = gl.GenBuffer();
+            modelTexA = gl.GenTexture();
+            modelTexB = gl.GenTexture();
+            gl.GetInteger(GetPName.MaxArrayTextureLayers, out int maxLayers);
+            modelSplit = Math.Max(256, Math.Min(2048, maxLayers));
             markerVao = gl.GenVertexArray();
             markerVbo = gl.GenBuffer();
             gl.BindVertexArray(markerVao);
@@ -91,7 +109,7 @@ namespace U9Editor.Render
             lookupTex = gl.GenTexture();
             Info = $"{gl.GetStringS(StringName.Version)} — {gl.GetStringS(StringName.Renderer)}";
             // a new context starts empty: the map goes up again
-            if (raster != null) lock (gate) { pendingRaster ??= raster; pendingTextures ??= textures; pendingMarkers ??= markers; pendingFixed = markersFixed; }
+            if (raster != null) lock (gate) { pendingRaster ??= raster; pendingTextures ??= textures; pendingMarkers ??= markers; pendingFixed = markersFixed; pendingModels ??= models; }
         }
 
         void BuildGrid()
@@ -141,6 +159,55 @@ namespace U9Editor.Render
         TerrainTextures textures;
         float[] markers;
         int markersFixed;
+
+        /// <summary>The objects' models (null for none).</summary>
+        public void SetModels(ModelScene m)
+        {
+            lock (gate) { models = m; pendingModels = m; }
+        }
+
+        void UploadModels(ModelScene m)
+        {
+            modelsReady = false;
+            modelDraws.Clear();
+            if (m == null || m.Batches.Count == 0) return;
+            gl.BindVertexArray(modelVao);
+            gl.BindBuffer(BufferTargetARB.ArrayBuffer, modelVbo);
+            gl.BufferData<float>(BufferTargetARB.ArrayBuffer, m.Vertices, BufferUsageARB.StaticDraw);
+            int[] sizes = { 3, 3, 2, 1, 4 };
+            for (uint i = 0, off = 0; i < sizes.Length; off += (uint)sizes[i], i++)
+            {
+                gl.EnableVertexAttribArray(i);
+                gl.VertexAttribPointer(i, sizes[i], VertexAttribPointerType.Float, false, ModelScene.VertexFloats * 4, (void*)(off * 4));
+            }
+            var inst = new List<float>();
+            foreach (var b in m.Batches)
+            {
+                modelDraws.Add((b.FirstVertex, b.VertexCount, inst.Count / ModelBatch.InstanceFloats, b.InstanceCount));
+                inst.AddRange(b.Instances);
+            }
+            gl.BindBuffer(BufferTargetARB.ArrayBuffer, instVbo);
+            gl.BufferData<float>(BufferTargetARB.ArrayBuffer, inst.ToArray(), BufferUsageARB.StaticDraw);
+            for (uint i = 5; i <= 9; i++) { gl.EnableVertexAttribArray(i); gl.VertexAttribDivisor(i, 1); }
+            gl.BindVertexArray(0);
+
+            int size = ModelScene.LayerSize;
+            for (int part = 0; part < 2; part++)
+            {
+                int first = part * modelSplit, n = Math.Max(0, Math.Min(modelSplit, m.Layers.Count - first));
+                gl.BindTexture(TextureTarget.Texture2DArray, part == 0 ? modelTexA : modelTexB);
+                gl.TexImage3D(TextureTarget.Texture2DArray, 0, InternalFormat.Rgba8, (uint)size, (uint)size, (uint)Math.Max(1, n), 0, PixelFormat.Rgba, PixelType.UnsignedByte, null);
+                for (int i = 0; i < n; i++)
+                    fixed (byte* p = m.Layers[first + i])
+                        gl.TexSubImage3D(TextureTarget.Texture2DArray, 0, 0, 0, i, (uint)size, (uint)size, 1, PixelFormat.Rgba, PixelType.UnsignedByte, p);
+                gl.GenerateMipmap(TextureTarget.Texture2DArray);
+                gl.TexParameter(TextureTarget.Texture2DArray, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.LinearMipmapLinear);
+                gl.TexParameter(TextureTarget.Texture2DArray, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
+                gl.TexParameter(TextureTarget.Texture2DArray, TextureParameterName.TextureWrapS, (int)TextureWrapMode.Repeat);
+                gl.TexParameter(TextureTarget.Texture2DArray, TextureParameterName.TextureWrapT, (int)TextureWrapMode.Repeat);
+            }
+            modelsReady = true;
+        }
 
         /// <summary>The objects to mark: fixed ones first, then nonfixed (null for none).</summary>
         public void SetObjects(SceneObjects objects)
@@ -211,6 +278,7 @@ namespace U9Editor.Render
                 pendingRaster = null;
                 tex = pendingTextures;
                 pendingTextures = null;
+                if (pendingModels != null) { UploadModels(pendingModels); pendingModels = null; }
                 if (pendingMarkers != null)
                 {
                     gl.BindBuffer(BufferTargetARB.ArrayBuffer, markerVbo);
@@ -297,6 +365,8 @@ namespace U9Editor.Render
                 gl.Uniform1(U(terrainProg, "uHaveTextures"), haveTextures ? 1 : 0);
                 gl.Uniform1(U(terrainProg, "uUvRotate"), st.UvRotate & 3);
                 gl.Uniform1(U(terrainProg, "uUvFlipV"), st.UvFlipV ? 1 : 0);
+                gl.Uniform1(U(terrainProg, "uHideUnseen"), st.HideUnseen ? 1 : 0);
+                gl.Uniform1(U(terrainProg, "uShowTerrain"), st.ShowTerrain ? 1 : 0);
                 gl.ActiveTexture(TextureUnit.Texture1);
                 gl.BindTexture(TextureTarget.Texture2DArray, terrainTex);
                 gl.Uniform1(U(terrainProg, "uTerrainTex"), 1);
@@ -315,7 +385,34 @@ namespace U9Editor.Render
                         gl.DrawElements(PrimitiveType.Triangles, gridIndexCount, DrawElementsType.UnsignedInt, (void*)0);
                     }
 
-                if ((st.ShowFixed && markerFixed > 0) || (st.ShowNonfixed && markerNonfixed > 0))
+                if (st.ShowModels && modelsReady && (st.ShowFixed || st.ShowNonfixed))
+                {
+                    gl.UseProgram(modelProg);
+                    Matrix(modelProg, "uViewProj", vp);
+                    gl.Uniform1(U(modelProg, "uSelected"), st.SelectedObject);
+                    gl.Uniform1(U(modelProg, "uHover"), st.HoverObject);
+                    gl.Uniform1(U(modelProg, "uSplit"), modelSplit);
+                    gl.ActiveTexture(TextureUnit.Texture3);
+                    gl.BindTexture(TextureTarget.Texture2DArray, modelTexA);
+                    gl.Uniform1(U(modelProg, "uTexA"), 3);
+                    gl.ActiveTexture(TextureUnit.Texture4);
+                    gl.BindTexture(TextureTarget.Texture2DArray, modelTexB);
+                    gl.Uniform1(U(modelProg, "uTexB"), 4);
+                    gl.BindVertexArray(modelVao);
+                    gl.BindBuffer(BufferTargetARB.ArrayBuffer, instVbo);
+                    const uint stride = ModelBatch.InstanceFloats * 4;
+                    foreach (var d in modelDraws)
+                    {
+                        long b = (long)d.InstFirst * stride;
+                        for (uint c = 0; c < 4; c++) gl.VertexAttribPointer(5 + c, 4, VertexAttribPointerType.Float, false, stride, (void*)(b + c * 16));
+                        gl.VertexAttribPointer(9, 1, VertexAttribPointerType.Float, false, stride, (void*)(b + 64));
+                        gl.DrawArraysInstanced(PrimitiveType.Triangles, d.First, (uint)d.Count, (uint)d.InstCount);
+                    }
+                    gl.BindVertexArray(0);
+                }
+
+                bool onlyZones = st.ShowModels && modelsReady;
+                if ((st.ShowFixed && markerFixed > 0 && !onlyZones) || (st.ShowNonfixed && markerNonfixed > 0))
                 {
                     if (!gles) gl.Enable((EnableCap)0x8642);     // GL_PROGRAM_POINT_SIZE (always on in GLES)
                     gl.UseProgram(markerProg);
@@ -323,8 +420,9 @@ namespace U9Editor.Render
                     gl.Uniform1(U(markerProg, "uPointScale"), (float)height * 0.6f);
                     gl.Uniform1(U(markerProg, "uHover"), st.HoverObject);
                     gl.Uniform1(U(markerProg, "uSelected"), st.SelectedObject);
+                    gl.Uniform1(U(markerProg, "uOnlyZones"), onlyZones ? 1 : 0);
                     gl.BindVertexArray(markerVao);
-                    if (st.ShowFixed && markerFixed > 0) gl.DrawArrays(PrimitiveType.Points, 0, (uint)markerFixed);
+                    if (st.ShowFixed && markerFixed > 0 && !onlyZones) gl.DrawArrays(PrimitiveType.Points, 0, (uint)markerFixed);
                     if (st.ShowNonfixed && markerNonfixed > 0) gl.DrawArrays(PrimitiveType.Points, markerFixed, (uint)markerNonfixed);
                 }
 
@@ -387,6 +485,9 @@ namespace U9Editor.Render
             if (gl == null) return;
             gl.DeleteProgram(terrainProg); gl.DeleteProgram(waterProg); gl.DeleteProgram(markerProg);
             gl.DeleteVertexArray(markerVao); gl.DeleteBuffer(markerVbo);
+            gl.DeleteProgram(modelProg); gl.DeleteVertexArray(modelVao); gl.DeleteBuffer(modelVbo); gl.DeleteBuffer(instVbo);
+            gl.DeleteTexture(modelTexA); gl.DeleteTexture(modelTexB);
+            modelsReady = false; modelDraws.Clear();
             markerFixed = markerNonfixed = 0;
             gl.DeleteVertexArray(gridVao); gl.DeleteBuffer(gridVbo); gl.DeleteBuffer(gridEbo);
             gl.DeleteVertexArray(waterVao); gl.DeleteBuffer(waterVbo);

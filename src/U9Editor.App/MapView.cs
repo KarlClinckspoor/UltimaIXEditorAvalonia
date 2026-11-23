@@ -144,6 +144,12 @@ namespace U9Editor.App
                 o => o.Kind == U9.Formats.Objects.ObjectFileKind.Fixed ? State.ShowFixed : State.ShowNonfixed);
         }
 
+        public void SetModels(ModelScene m)
+        {
+            renderer.SetModels(m);
+            Redraw();
+        }
+
         public void SetTextures(TerrainTextures t)
         {
             renderer.SetTextures(t);

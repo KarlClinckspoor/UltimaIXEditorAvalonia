@@ -28,7 +28,9 @@ dotnet run --project src/U9Editor.App -- --gamedata gamedata --map 9
 
 Editor options: `--gamedata PATH`, `--map N`, `--size WxH`, `--top-down`, `--screenshot out.png` (saves the first
 frame and quits). In the view: left drag orbits, middle or Shift+drag pans, wheel zooms, W/A/S/D move, Q/E turn,
-R/F raise and lower, Tab toggles the top-down map, Home frames the map, click selects a point (shown in the status bar).
+R/F raise and lower, Tab toggles the top-down map, Home frames the map, click selects a point or object (shown in
+the status bar). The Links panel lists the current map's map changes; double-click goes to where one leads.
+Start options for scripted pictures: `--look X,ROW --distance D --pitch P --yaw Y`.
 
 ## Format status
 
@@ -36,6 +38,11 @@ R/F raise and lower, Tab toggles the top-down map, Home frames the map, click se
 |---|---|---|---|
 | FLX archives (`*.flx`, `texture8.N`, `texture16.N`) | yes | yes (preserve or compact layout) | all 29 shipped archives |
 | Terrain (`terrain.N`) | yes | yes | all 168 shipped maps |
+| Bitmaps (`bitmap16.flx`: terrain and model textures) | yes | not yet | — |
+| Fixed / nonfixed objects (`fixed.N`, `nonfixed.N`) | yes | in place (move within a chunk) | all shipped files |
+| Object types (`TYPES.DAT`, `TYPENAME.FLX`) | yes | not yet | — |
+| Models (`sappear.flx`) | yes (all 3,748 models, every LOD) | not yet | — |
+| Trigger scripts (`TRIGGERS.FLX`): map changes | yes | not yet | — |
 
 Findings from the shipped files, beyond the public notes:
 
@@ -57,5 +64,10 @@ Map space (used by the editor):
 - Fixed and nonfixed objects are placed at 128 units per point, and their height is 4 x the terrain height
   (median 3.99 over 21,853 objects in `fixed.9`), so one point spacing is 32 height units. The water level is in
   the same object units.
-- `nonfixed.N` records differ from the public notes: position x, y, z and type sit at +0x08, +0x0A, +0x0C and
-  +0x0E of each 32-byte record. To be confirmed when the nonfixed reader is written.
+- Objects: model space is x east, y north, z up in object units; an object's quaternion (int16 x, y, z, w at
+  +0x0C) is applied as stored (not conjugated), then its position; fronts face south. Checked on fence chains
+  and Castle British.
+- Map changes: a nonfixed trigger zone (usually type 1111) names a `TRIGGERS.FLX` script whose op 0x1F sends the
+  player to the object with a matching link in the destination map. The cave between Buccaneer's Den and New
+  Magincia is map 89 ("Buc2NewMag"), entered at points (573.0, 262.4) and (629.0, 248.9) on Britannia.
+- Bitmap pixel format is the low nibble of frame byte 1: 3 = 8-bit intensity, 4 = RGB565, 5 = ARGB1555.

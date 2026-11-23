@@ -18,8 +18,11 @@
         <MenuItem Header="Colour by _texture number" Click="OnColourTexture" />
         <MenuItem Header="Colour by swap/mirror/bit 15 _flags" Click="OnColourFlags" />
         <Separator />
+        <MenuItem x:Name="ModelsItem" Header="Object _models (off: markers)" ToggleType="CheckBox" IsChecked="True" Click="OnToggleModels" />
         <MenuItem x:Name="FixedItem" Header="Fi_xed objects" ToggleType="CheckBox" IsChecked="True" Click="OnToggleFixed" />
         <MenuItem x:Name="NonfixedItem" Header="_Nonfixed objects" ToggleType="CheckBox" IsChecked="True" Click="OnToggleNonfixed" />
+        <MenuItem x:Name="TerrainItem" Header="T_errain" ToggleType="CheckBox" IsChecked="True" Click="OnToggleTerrain" />
+        <MenuItem x:Name="UnseenItem" Header="Hide texture 29 (never shown in the game)" ToggleType="CheckBox" IsChecked="True" Click="OnToggleUnseen" />
         <MenuItem x:Name="WaterItem" Header="_Water" ToggleType="CheckBox" IsChecked="True" Click="OnToggleWater" />
         <MenuItem x:Name="HolesItem" Header="Show _holes in magenta" ToggleType="CheckBox" Click="OnToggleHoles" />
         <MenuItem x:Name="GridItem" Header="Tile _grid (16 points)" ToggleType="CheckBox" Click="OnToggleGrid" />
