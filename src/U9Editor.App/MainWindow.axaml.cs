@@ -31,6 +31,11 @@ namespace U9Editor.App
         TypeNames typeNames;
         MapLinks mapLinks;
         ObjectMap currentNonfixed;
+        /// <summary>Editing sessions of the maps opened, kept while they have changes or undo steps.</summary>
+        readonly Dictionary<int, MapEditor> editors = new Dictionary<int, MapEditor>();
+        MapEditor editor;
+        SceneObject selected;
+        bool closeAnyway;
         (double X, double Row)? lookAfterLoad;
 
         sealed class LinkItem
@@ -53,13 +58,16 @@ namespace U9Editor.App
             View.Hovered += h => StatusText.Text = objectStatus ?? Describe(h, "");
             View.Picked += h => StatusText.Text = objectStatus ?? Describe(h, "selected ");
             View.ObjectHovered += o => objectStatus = o?.ToString();
-            View.ObjectPicked += o => objectStatus = o != null ? "selected " + o : null;
+            View.ObjectPicked += o => { objectStatus = o != null ? "selected " + o : null; Select(o); };
+            View.ObjectDragging += (o, x, y, z) => StatusText.Text = $"moving {o.Name ?? "type " + o.Source.Type} to ({x / 128.0:F2}, {y / 128.0:F2}) z {z}   (Esc puts it back)";
+            View.ObjectDragged += (o, x, y, z) => Edit(() => editor.Move(o, x, y, z));
+            View.FollowTerrain = true;
             View.CameraChanged += () => Compass.RenderTransform = new Avalonia.Media.RotateTransform(-View.Camera.Yaw);
             View.FrameDrawn += OnFrameDrawn;
             AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
             AddHandler(KeyUpEvent, (s, e) => View.CameraKeyUp(e), RoutingStrategies.Tunnel);
             Opened += (s, e) => OpenAtStart();
-            Closing += (s, e) => settings.Save();
+            Closing += OnClosing;
             Closed += (s, e) => { bitmaps?.Dispose(); appearances?.Dispose(); };
         }
 
@@ -132,13 +140,15 @@ namespace U9Editor.App
             var raster = new TerrainRaster(terrain);
             var space = new MapSpace(terrain.Width, terrain.Height) { NorthIsRowZero = settings.NorthIsRowZero };
             View.SetMap(raster, space, MapSpace.WorldY(0) + terrain.WaterHeight / MapSpace.HeightUnitsPerPoint);
-            var objects = LoadObjects(m.Number, space);
+            var objects = LoadObjects(m.Number, space, raster);
             View.SetObjects(objects);
             ShowLinks(m, objects);
             modelScene = null;
             if (appearances != null && bitmaps != null && typeTable != null)
             {
-                modelScene = ModelScene.Build(objects, space, typeTable, i => i < appearances.Count ? appearances.Read(i) : null, i => i < bitmaps.Count ? bitmaps.Read(i) : null);
+                var sap = appearances;
+                var bmp = bitmaps;
+                modelScene = ModelScene.Build(objects, space, typeTable, i => i < sap.Count ? sap.Read(i) : null, i => i < bmp.Count ? bmp.Read(i) : null);
                 View.SetModels(modelScene);
             }
             TerrainTextures textures = null;
@@ -147,6 +157,9 @@ namespace U9Editor.App
                 textures = TerrainTextures.Build(raster, i => i < bitmaps.Count ? bitmaps.Read(i) : null);
                 View.SetTextures(textures);
             }
+            editor.Models = modelScene;
+            Select(null);
+            UpdateTitle();
             View.FrameMap();
             if (lookAfterLoad is { } look) { View.LookAt(look.X, look.Row, 30); lookAfterLoad = null; }
             MapInfo.Text = $"{terrain.Width}x{terrain.Height} points, {terrain.Chunks.Count} chunks, water at height {terrain.WaterHeight}, " +
@@ -166,10 +179,198 @@ namespace U9Editor.App
             catch (InvalidDataException) { return null; }
         }
 
-        SceneObjects LoadObjects(int number, MapSpace space)
+        SceneObjects LoadObjects(int number, MapSpace space, TerrainRaster raster)
         {
-            currentNonfixed = LoadObjectFile("runtime", "nonfixed", number, ObjectFileKind.Nonfixed);
-            return SceneObjects.Build(LoadObjectFile("static", "fixed", number, ObjectFileKind.Fixed), currentNonfixed, space, typeNames);
+            if (editor != null) editor.Changed -= OnObjectsChanged;
+            // a map with edits keeps them while other maps are looked at
+            if (editors.TryGetValue(number, out var kept))
+            {
+                kept.Rebind(space, raster);
+                editor = kept;
+            }
+            else
+            {
+                var fx = LoadObjectFile("static", "fixed", number, ObjectFileKind.Fixed);
+                var nf = LoadObjectFile("runtime", "nonfixed", number, ObjectFileKind.Nonfixed);
+                editor = new MapEditor(number, fx, nf, SceneObjects.Build(fx, nf, space, typeNames), space, raster);
+            }
+            editor.Changed += OnObjectsChanged;
+            currentNonfixed = editor.Nonfixed;
+            return editor.Objects;
+        }
+
+        // ---- editing
+
+        void OnObjectsChanged(IReadOnlyList<SceneObject> touched, bool structural)
+        {
+            editors[editor.MapNumber] = editor;
+            View.RefreshEdited(touched, structural);
+            if (selected != null && selected.Source.Removed) { View.SelectObject(null); }
+            else Select(selected);
+            UpdateTitle();
+        }
+
+        /// <summary>Runs an edit, showing why if the files do not allow it.</summary>
+        void Edit(Action a)
+        {
+            if (editor == null) return;
+            try { a(); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is ArgumentException || ex is InvalidDataException)
+            {
+                StatusText.Text = "Not done: " + ex.Message;
+                if (selected != null) View.RefreshEdited(new[] { selected }, false);
+            }
+        }
+
+        void Select(SceneObject o)
+        {
+            selected = o;
+            bool on = o != null && editor != null;
+            ObjectFields.IsEnabled = ObjectButtons.IsEnabled = on;
+            if (!on)
+            {
+                ObjectTitle.Text = "Click an object to select it; drag it to move it.";
+                EditX.Text = EditRow.Text = EditZ.Text = EditYaw.Text = "";
+                ObjectDetails.Text = "";
+                return;
+            }
+            var s = o.Source;
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            ObjectTitle.Text = $"{(o.Kind == ObjectFileKind.Fixed ? "Fixed" : "Nonfixed")} #{o.Id}: {o.Name ?? "(no name)"}, type {s.Type}";
+            EditX.Text = (s.MapX / 128.0).ToString("0.###", ci);
+            EditRow.Text = (s.MapY / 128.0).ToString("0.###", ci);
+            EditZ.Text = s.Z.ToString(ci);
+            EditYaw.Text = MapEditor.Yaw(s.Rotation).ToString("0.#", ci);
+            ObjectDetails.Text = $"flags 0x{s.Flags:X}" + (o.Kind == ObjectFileKind.Nonfixed ? $", link {s.Link}, model {s.Model}" : "") +
+                                 (o.Model >= 0 ? $", draws model {o.Model}" : ", no model") + (o.IsLinkZone ? ", map change zone" : "") +
+                                 $"\nchunk ({s.ChunkX / 4096}, {s.ChunkY / 4096}), file offset 0x{s.FileOffset:X}" +
+                                 (s.Map.CanLeaveChunk(s) ? "" : "\nits properties chain on, so it stays in its chunk");
+        }
+
+        void UpdateTitle()
+        {
+            string dirty = editors.Values.Any(e => e.HasChanges) ? " *" : "";
+            Title = $"U9 Editor — {game?.Root}{dirty}";
+            UndoItem.Header = editor?.UndoDescription != null ? $"_Undo {editor.UndoDescription}" : "_Undo";
+            RedoItem.Header = editor?.RedoDescription != null ? $"_Redo {editor.RedoDescription}" : "_Redo";
+        }
+
+        void OnObjectPanelKey(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter && e.Source is TextBox) { OnApplyObject(null, null); e.Handled = true; }
+        }
+
+        void OnApplyObject(object sender, RoutedEventArgs e)
+        {
+            if (selected == null || editor == null) return;
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            var st = System.Globalization.NumberStyles.Float;
+            if (!double.TryParse(EditX.Text, st, ci, out double x) || !double.TryParse(EditRow.Text, st, ci, out double row) ||
+                !int.TryParse(EditZ.Text, System.Globalization.NumberStyles.Integer, ci, out int z) || !float.TryParse(EditYaw.Text, st, ci, out float yaw))
+            {
+                StatusText.Text = "Not done: X and Row are points (like 502.25), Z a whole number, Turn degrees.";
+                return;
+            }
+            var s = selected.Source;
+            float turn = yaw - MapEditor.Yaw(s.Rotation);
+            System.Numerics.Quaternion? q = Math.Abs(turn) > 0.05f ? MapEditor.Turned(s.Rotation, turn) : null;
+            var o = selected;
+            Edit(() => editor.Move(o, (int)Math.Round(x * 128), (int)Math.Round(row * 128), z, q));
+        }
+
+        void OnDropToGround(object sender, RoutedEventArgs e)
+        {
+            if (selected == null) return;
+            var o = selected;
+            Edit(() => editor.Move(o, o.Source.MapX, o.Source.MapY, editor.GroundZ(o.Source.MapX, o.Source.MapY)));
+        }
+
+        void OnDuplicate(object sender, RoutedEventArgs e)
+        {
+            if (selected == null) return;
+            var o = selected;
+            SceneObject copy = null;
+            // one point east, so the copy can be seen and dragged
+            Edit(() => copy = editor.Duplicate(o, o.Source.MapX + 128, o.Source.MapY, o.Source.Z));
+            if (copy != null) { View.SelectObject(copy); StatusText.Text = "Copied: the copy is selected, one point east."; }
+        }
+
+        void OnDelete(object sender, RoutedEventArgs e)
+        {
+            if (selected == null) return;
+            var o = selected;
+            Edit(() => editor.Remove(o));
+            StatusText.Text = $"Deleted {o.Name ?? "type " + o.Source.Type}. Ctrl+Z brings it back.";
+        }
+
+        void Turn(float degrees)
+        {
+            if (selected == null) return;
+            var o = selected;
+            Edit(() => editor.Rotate(o, MapEditor.Turned(o.Source.Rotation, degrees)));
+        }
+
+        void Raise(int units)
+        {
+            if (selected == null) return;
+            var o = selected;
+            Edit(() => editor.Move(o, o.Source.MapX, o.Source.MapY, o.Source.Z + units));
+        }
+
+        static bool Fine => (lastModifiers & KeyModifiers.Shift) != 0;
+        static KeyModifiers lastModifiers;
+        void OnTurnLeft(object sender, RoutedEventArgs e) => Turn(Fine ? 1 : 15);
+        void OnTurnRight(object sender, RoutedEventArgs e) => Turn(Fine ? -1 : -15);
+        void OnRaise(object sender, RoutedEventArgs e) => Raise(Fine ? 2 : 16);
+        void OnLower(object sender, RoutedEventArgs e) => Raise(Fine ? -2 : -16);
+        void OnToggleFollow(object sender, RoutedEventArgs e) => View.FollowTerrain = FollowItem.IsChecked;
+
+        void OnUndo(object sender, RoutedEventArgs e)
+        {
+            string d = editor?.Undo();
+            StatusText.Text = d != null ? $"Undid {d}." : "Nothing to undo.";
+        }
+
+        void OnRedo(object sender, RoutedEventArgs e)
+        {
+            string d = editor?.Redo();
+            StatusText.Text = d != null ? $"Redid {d}." : "Nothing to redo.";
+        }
+
+        string ObjectPath(string folder, string name, int number)
+        {
+            string dir = Path.Combine(game.Root, folder);
+            return Directory.Exists(dir) ? Directory.EnumerateFiles(dir, $"{name}.{number}", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault() : null;
+        }
+
+        void OnSave(object sender, RoutedEventArgs e)
+        {
+            var written = new List<string>();
+            try
+            {
+                foreach (var ed in editors.Values.Where(x => x.HasChanges).ToList())
+                    written.AddRange(ed.Save(ObjectPath("static", "fixed", ed.MapNumber), ObjectPath("runtime", "nonfixed", ed.MapNumber)));
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                StatusText.Text = "Could not save: " + ex.Message;
+                return;
+            }
+            UpdateTitle();
+            StatusText.Text = written.Count == 0 ? "No changes to save." :
+                $"Saved {string.Join(", ", written.Select(Path.GetFileName))} (the first save keeps the original as .orig). Start a new game to see nonfixed changes.";
+        }
+
+        void OnClosing(object sender, WindowClosingEventArgs e)
+        {
+            if (!closeAnyway && editors.Values.Any(x => x.HasChanges))
+            {
+                e.Cancel = true;
+                closeAnyway = true;
+                StatusText.Text = "There are unsaved object changes: Ctrl+S saves them; close again to throw them away.";
+                return;
+            }
+            settings.Save();
         }
 
         void ShowLinks(MapEntry m, SceneObjects objects)
@@ -250,9 +451,41 @@ namespace U9Editor.App
 
         void OnWindowKeyDown(object sender, KeyEventArgs e)
         {
+            lastModifiers = e.KeyModifiers;
             if (e.Source is TextBox || e.Source is ComboBox) return;
+            if (EditKey(e)) { e.Handled = true; return; }
             if (e.Key == Key.Tab) { TopDownItem.IsChecked = !TopDownItem.IsChecked; OnToggleTopDown(null, null); e.Handled = true; return; }
             View.CameraKey(e);
+        }
+
+        bool EditKey(KeyEventArgs e)
+        {
+            bool ctrl = (e.KeyModifiers & KeyModifiers.Control) != 0, shift = (e.KeyModifiers & KeyModifiers.Shift) != 0;
+            if (ctrl)
+            {
+                switch (e.Key)
+                {
+                    case Key.Z: if (shift) OnRedo(null, null); else OnUndo(null, null); return true;
+                    case Key.Y: OnRedo(null, null); return true;
+                    case Key.S: OnSave(null, null); return true;
+                    case Key.D: OnDuplicate(null, null); return true;
+                }
+                return false;
+            }
+            switch (e.Key)
+            {
+                case Key.Escape:
+                    if (View.IsDraggingObject) { View.CancelDrag(); StatusText.Text = "Put back."; }
+                    else View.SelectObject(null);
+                    return true;
+                case Key.Delete: OnDelete(null, null); return true;
+                case Key.End: OnDropToGround(null, null); return true;
+                case Key.OemOpenBrackets: OnTurnLeft(null, null); return true;
+                case Key.OemCloseBrackets: OnTurnRight(null, null); return true;
+                case Key.PageUp: OnRaise(null, null); return true;
+                case Key.PageDown: OnLower(null, null); return true;
+            }
+            return false;
         }
 
         // ---- menu

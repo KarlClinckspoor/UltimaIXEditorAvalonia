@@ -30,6 +30,14 @@ Editor options: `--gamedata PATH`, `--map N`, `--size WxH`, `--top-down`, `--scr
 frame and quits). In the view: left drag orbits, middle or Shift+drag pans, wheel zooms, W/A/S/D move, Q/E turn,
 R/F raise and lower, Tab toggles the top-down map, Home frames the map, click selects a point or object (shown in
 the status bar). The Links panel lists the current map's map changes; double-click goes to where one leads.
+
+Editing objects: click an object (its model, or its marker with models off) to select it; drag it to move it (it
+keeps its height above the ground unless Edit > Dragged objects follow the terrain is off; Esc puts it back).
+The Selected object panel takes exact X, Row (points), Z (object units) and a turn in degrees. Keys: `[` / `]`
+turn 15° (Shift 1°), Page Up / Page Down raise and lower, End puts it on the ground, Ctrl+D copies, Delete
+deletes, Ctrl+Z / Ctrl+Y undo and redo, Ctrl+S saves. Saving writes `static/fixed.N` and `runtime/nonfixed.N` of
+every changed map; the first save keeps each original beside it as `.orig`. Saved games most likely carry their
+own copy of the nonfixed objects (not checked yet), so try nonfixed changes in a new game.
 Start options for scripted pictures: `--look X,ROW --distance D --pitch P --yaw Y`.
 
 ## Format status
@@ -39,7 +47,7 @@ Start options for scripted pictures: `--look X,ROW --distance D --pitch P --yaw 
 | FLX archives (`*.flx`, `texture8.N`, `texture16.N`) | yes | yes (preserve or compact layout) | all 29 shipped archives |
 | Terrain (`terrain.N`) | yes | yes | all 168 shipped maps |
 | Bitmaps (`bitmap16.flx`: terrain and model textures) | yes | not yet | — |
-| Fixed / nonfixed objects (`fixed.N`, `nonfixed.N`) | yes | in place (move within a chunk) | all shipped files |
+| Fixed / nonfixed objects (`fixed.N`, `nonfixed.N`) | yes | move, turn, copy, delete (with undo) | all shipped files |
 | Object types (`TYPES.DAT`, `TYPENAME.FLX`) | yes | not yet | — |
 | Models (`sappear.flx`) | yes (all 3,748 models, every LOD) | not yet | — |
 | Trigger scripts (`TRIGGERS.FLX`): map changes | yes | not yet | — |
@@ -70,4 +78,10 @@ Map space (used by the editor):
 - Map changes: a nonfixed trigger zone (usually type 1111) names a `TRIGGERS.FLX` script whose op 0x1F sends the
   player to the object with a matching link in the destination map. The cave between Buccaneer's Den and New
   Magincia is map 89 ("Buc2NewMag"), entered at points (573.0, 262.4) and (629.0, 248.9) on Britannia.
+- Object files: a chunk (32 x 32 points) is a chain of 4 KB pages. Only its first page's 16 list heads are used
+  (later pages hold leftovers there); each list is one subchunk, `x / 1024 + 4 * (y / 1024)` inside the chunk, and
+  runs through records in any of the chunk's pages. A page's +0x04 is the offset of its first free byte, +0x14 the
+  records in it and (nonfixed) +0x18 its property segments. The u32 before the data is a free page list: the
+  first unused page | 1, whose +0x00 names the next. Fixed pages are packed; nonfixed pages keep holes.
+  Moving an object to another chunk moves its record (and property segment) into that chunk's pages.
 - Bitmap pixel format is the low nibble of frame byte 1: 3 = 8-bit intensity, 4 = RGB565, 5 = ARGB1555.

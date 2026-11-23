@@ -16,7 +16,8 @@ namespace U9Editor.App
     /// <summary>
     /// The 3D view, after the UW editor's LevelView: hosts <see cref="TerrainRenderer"/> in Avalonia's OpenGL
     /// control and turns mouse and keys into camera moves and picks. It draws only when something changed.
-    /// Mouse: left click selects, left or right drag orbits, middle or Shift+left drag pans, wheel zooms.
+    /// Mouse: left click selects, left drag on the selected object moves it, other left or right drags orbit,
+    /// middle or Shift+left drag pans, wheel zooms.
     /// Keys: W/A/S/D or arrows move, Q/E turn, R/F raise and lower the point looked at, +/- zoom, Home frames the map.
     /// </summary>
     public sealed class MapView : OpenGlControlBase, Avalonia.Rendering.ICustomHitTest
@@ -134,21 +135,127 @@ namespace U9Editor.App
             Redraw();
         }
 
-        /// <summary>The object marker under a screen point, if any is in front of the terrain.</summary>
+        bool KindShown(SceneObject o) => o.Kind == U9.Formats.Objects.ObjectFileKind.Fixed ? State.ShowFixed : State.ShowNonfixed;
+        bool ModelsDrawn => State.ShowModels && models != null;
+
+        /// <summary>
+        /// The object under a screen point, if any is in front of the terrain: the first model the ray meets, or a
+        /// marker within a few pixels (markers are drawn for every object with models off, else for map-change zones).
+        /// </summary>
         public SceneObject PickObjectAt(Point p, TerrainHit terrainHit)
         {
             if (objects == null) return null;
-            float depth = terrainHit.Hit ? System.Numerics.Vector3.Distance(Camera.Eye, terrainHit.World) : float.PositiveInfinity;
+            Camera.Ray((float)p.X, (float)p.Y, (float)Bounds.Width, (float)Bounds.Height, out var origin, out var dir);
+            float terrainT = terrainHit.Hit && State.ShowTerrain ? Vector3.Dot(terrainHit.World - origin, dir) : float.PositiveInfinity;
+            SceneObject model = null;
+            float modelT = terrainT;
+            if (ModelsDrawn) model = objects.PickModel(models, space, origin, dir, terrainT, KindShown, out modelT);
+            float depth = terrainHit.Hit ? Vector3.Distance(Camera.Eye, terrainHit.World) : float.PositiveInfinity;
             var vp = Camera.View * Camera.Projection((float)(Bounds.Width / Math.Max(1, Bounds.Height)));
-            return objects.Pick(vp, Camera.Eye, (float)p.X, (float)p.Y, (float)Bounds.Width, (float)Bounds.Height, 7f, depth,
-                o => o.Kind == U9.Formats.Objects.ObjectFileKind.Fixed ? State.ShowFixed : State.ShowNonfixed);
+            var marker = objects.Pick(vp, Camera.Eye, (float)p.X, (float)p.Y, (float)Bounds.Width, (float)Bounds.Height, 7f, depth,
+                o => KindShown(o) && (!ModelsDrawn || o.IsLinkZone));
+            if (marker == null) return model;
+            if (model == null) return marker;
+            return Vector3.Dot(marker.World - origin, dir) <= modelT + 0.5f ? marker : model;
         }
+
+        ModelScene models;
 
         public void SetModels(ModelScene m)
         {
+            models = m;
             renderer.SetModels(m);
             Redraw();
         }
+
+        // ---- editing
+
+        /// <summary>The map's editing session (null: nothing can be moved).</summary>
+        public MapEditor Editor { get; set; }
+        /// <summary>A dragged object keeps its height above the ground; off, it keeps its height.</summary>
+        public bool FollowTerrain { get; set; } = true;
+        /// <summary>An object was dragged and let go: object, new position across the map and height (object units).</summary>
+        public event Action<SceneObject, int, int, int> ObjectDragged;
+        /// <summary>While dragging: object, position and height it would get.</summary>
+        public event Action<SceneObject, int, int, int> ObjectDragging;
+
+        SceneObject dragObject;
+        Vector3 dragGrab, dragStartWorld;
+        int dragX, dragY, dragZ, dragGroundOffset;
+
+        /// <summary>Objects changed in the editor: move their markers and models, or send all again.</summary>
+        public void RefreshEdited(IReadOnlyList<SceneObject> touched, bool structural)
+        {
+            if (structural)
+            {
+                renderer.SetObjects(objects);
+                renderer.SetInstances(models);
+            }
+            else
+                foreach (var o in touched)
+                {
+                    renderer.UpdateMarker(o.Id, o.World);
+                    if (models != null) renderer.UpdateInstance(models.SlotOf(o.Id), ModelScene.Placement(o.Source, space), o.Id);
+                }
+            Redraw();
+        }
+
+        /// <summary>Draws an object at a position it does not have yet (object units across the map), as a drag shows it.</summary>
+        public void Preview(SceneObject o, float mapX, float mapY, float z, Quaternion rotation)
+        {
+            renderer.UpdateMarker(o.Id, new Vector3(mapX / MapSpace.ObjectUnitsPerPoint, MapSpace.WorldYFromObject(z), space.WorldZ(mapY / MapSpace.ObjectUnitsPerPoint)));
+            if (models != null) renderer.UpdateInstance(models.SlotOf(o.Id), ModelScene.Placement(mapX, mapY, z, rotation, space), o.Id);
+            Redraw();
+        }
+
+        bool RayToHeight(Point p, float y, out Vector3 at)
+        {
+            Camera.Ray((float)p.X, (float)p.Y, (float)Bounds.Width, (float)Bounds.Height, out var o, out var d);
+            at = default;
+            if (Math.Abs(d.Y) < 1e-4f) return false;
+            float t = (y - o.Y) / d.Y;
+            if (t < 0) return false;
+            at = o + d * t;
+            return true;
+        }
+
+        void StartObjectDrag(Point p)
+        {
+            dragObject = null;
+            if (Editor == null || objects == null || State.SelectedObject < 0) return;
+            var hit = PickAt(p);
+            var ob = PickObjectAt(p, hit);
+            if (ob == null || ob.Id != State.SelectedObject) return;
+            if (!RayToHeight(p, ob.World.Y, out dragGrab)) return;
+            dragObject = ob;
+            dragStartWorld = ob.World;
+            dragX = ob.Source.MapX; dragY = ob.Source.MapY; dragZ = ob.Source.Z;
+            dragGroundOffset = ob.Source.Z - Editor.GroundZ(dragX, dragY);
+        }
+
+        void DragObjectTo(Point p)
+        {
+            if (!RayToHeight(p, dragStartWorld.Y, out var at)) return;
+            var w = dragStartWorld + new Vector3(at.X - dragGrab.X, 0, at.Z - dragGrab.Z);
+            int mx = Math.Clamp((int)MathF.Round(w.X * MapSpace.ObjectUnitsPerPoint), 0, space.Width * (int)MapSpace.ObjectUnitsPerPoint - 1);
+            int my = Math.Clamp((int)MathF.Round(space.Row(w.Z) * MapSpace.ObjectUnitsPerPoint), 0, space.Height * (int)MapSpace.ObjectUnitsPerPoint - 1);
+            int z = FollowTerrain ? Math.Clamp(Editor.GroundZ(mx, my) + dragGroundOffset, 0, 0xFFFF) : dragObject.Source.Z;
+            dragX = mx; dragY = my; dragZ = z;
+            Preview(dragObject, mx, my, z, dragObject.Source.Rotation);
+            ObjectDragging?.Invoke(dragObject, mx, my, z);
+        }
+
+        /// <summary>Stops a drag and puts the object back where it was.</summary>
+        public void CancelDrag()
+        {
+            if (dragObject == null) return;
+            var o = dragObject;
+            dragObject = null;
+            anyDown = dragging = false;
+            RefreshEdited(new[] { o }, false);
+        }
+
+        public bool IsDraggingObject => dragObject != null && dragging;
 
         public void SetTextures(TerrainTextures t)
         {
@@ -232,6 +339,8 @@ namespace U9Editor.App
             anyDown = true;
             leftDown = pt.Properties.IsLeftButtonPressed;
             panning = pt.Properties.IsMiddleButtonPressed || (leftDown && (e.KeyModifiers & KeyModifiers.Shift) != 0);
+            dragObject = null;
+            if (leftDown && !panning) StartObjectDrag(pressAt);
             e.Pointer.Capture(this);
             e.Handled = true;
         }
@@ -244,6 +353,11 @@ namespace U9Editor.App
             {
                 var d = p - lastAt;
                 if (!dragging && Math.Abs(p.X - pressAt.X) + Math.Abs(p.Y - pressAt.Y) > 4) dragging = true;
+                if (dragging && dragObject != null)
+                {
+                    DragObjectTo(p);
+                    return;
+                }
                 if (dragging)
                 {
                     if (panning || Camera.Orthographic) Camera.Pan((float)d.X, (float)d.Y, (float)Bounds.Height);
@@ -272,8 +386,15 @@ namespace U9Editor.App
             base.OnPointerReleased(e);
             bool click = anyDown && !dragging && leftDown && !panning;
             var at = e.GetPosition(this);
+            var dropped = dragging ? dragObject : null;
             anyDown = dragging = panning = leftDown = false;
+            dragObject = null;
             e.Pointer.Capture(null);
+            if (dropped != null)
+            {
+                ObjectDragged?.Invoke(dropped, dragX, dragY, dragZ);
+                return;
+            }
             if (click)
             {
                 var hit = PickAt(at);
@@ -290,6 +411,8 @@ namespace U9Editor.App
         protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
         {
             base.OnPointerCaptureLost(e);
+            if (dragObject != null && dragging) CancelDrag();
+            dragObject = null;
             anyDown = dragging = panning = leftDown = false;
         }
 

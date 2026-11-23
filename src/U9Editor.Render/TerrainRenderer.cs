@@ -45,8 +45,12 @@ namespace U9Editor.Render
         uint markerVao, markerVbo;
         uint modelProg, modelVao, modelVbo, instVbo, modelTexA, modelTexB;
         int modelSplit = 2048;
-        ModelScene pendingModels, models;
+        ModelScene pendingModels, models, pendingInstances;
+        int uploadedGeometry = -1;
         bool modelsReady;
+        readonly List<(int Slot, float[] Data)> pendingInstanceWrites = new List<(int, float[])>();
+        readonly List<(int Slot, float[] Data)> pendingMarkerWrites = new List<(int, float[])>();
+        int[] markerSlot = Array.Empty<int>();
         readonly List<(int First, int Count, int InstFirst, int InstCount)> modelDraws = new List<(int, int, int, int)>();
         int markerFixed, markerNonfixed;
         float[] pendingMarkers;
@@ -166,11 +170,48 @@ namespace U9Editor.Render
             lock (gate) { models = m; pendingModels = m; }
         }
 
+        /// <summary>The model instances changed (objects added, removed or regrouped): send them again.</summary>
+        public void SetInstances(ModelScene m)
+        {
+            lock (gate)
+            {
+                models = m;
+                pendingInstanceWrites.Clear();
+                if (m != null && m.GeometryVersion != uploadedGeometry) pendingModels = m;
+                else pendingInstances = m;
+            }
+        }
+
+        /// <summary>One instance's placement changed (dragging): matrix and object id as stored in <see cref="ModelScene.Instances"/>.</summary>
+        public void UpdateInstance(int slot, Matrix4x4 m, int objectId)
+        {
+            if (slot < 0) return;
+            var f = new float[] { m.M11, m.M12, m.M13, m.M14, m.M21, m.M22, m.M23, m.M24, m.M31, m.M32, m.M33, m.M34, m.M41, m.M42, m.M43, m.M44, objectId };
+            lock (gate) pendingInstanceWrites.Add((slot, f));
+        }
+
+        /// <summary>One object's marker moved.</summary>
+        public void UpdateMarker(int objectId, Vector3 world)
+        {
+            int slot = objectId >= 0 && objectId < markerSlot.Length ? markerSlot[objectId] : -1;
+            if (slot < 0) return;
+            lock (gate) pendingMarkerWrites.Add((slot, new[] { world.X, world.Y, world.Z }));
+        }
+
+        void UploadInstances(ModelScene m)
+        {
+            modelDraws.Clear();
+            foreach (var b in m.Batches) modelDraws.Add((b.FirstVertex, b.VertexCount, b.InstanceFirst, b.InstanceCount));
+            gl.BindBuffer(BufferTargetARB.ArrayBuffer, instVbo);
+            gl.BufferData<float>(BufferTargetARB.ArrayBuffer, m.Instances.Length > 0 ? m.Instances : new float[ModelBatch.InstanceFloats], BufferUsageARB.DynamicDraw);
+        }
+
         void UploadModels(ModelScene m)
         {
             modelsReady = false;
             modelDraws.Clear();
-            if (m == null || m.Batches.Count == 0) return;
+            if (m == null) return;
+            uploadedGeometry = m.GeometryVersion;
             gl.BindVertexArray(modelVao);
             gl.BindBuffer(BufferTargetARB.ArrayBuffer, modelVbo);
             gl.BufferData<float>(BufferTargetARB.ArrayBuffer, m.Vertices, BufferUsageARB.StaticDraw);
@@ -180,14 +221,7 @@ namespace U9Editor.Render
                 gl.EnableVertexAttribArray(i);
                 gl.VertexAttribPointer(i, sizes[i], VertexAttribPointerType.Float, false, ModelScene.VertexFloats * 4, (void*)(off * 4));
             }
-            var inst = new List<float>();
-            foreach (var b in m.Batches)
-            {
-                modelDraws.Add((b.FirstVertex, b.VertexCount, inst.Count / ModelBatch.InstanceFloats, b.InstanceCount));
-                inst.AddRange(b.Instances);
-            }
-            gl.BindBuffer(BufferTargetARB.ArrayBuffer, instVbo);
-            gl.BufferData<float>(BufferTargetARB.ArrayBuffer, inst.ToArray(), BufferUsageARB.StaticDraw);
+            UploadInstances(m);
             for (uint i = 5; i <= 9; i++) { gl.EnableVertexAttribArray(i); gl.VertexAttribDivisor(i, 1); }
             gl.BindVertexArray(0);
 
@@ -214,19 +248,26 @@ namespace U9Editor.Render
         {
             float[] f = new float[0];
             int nFixed = 0;
+            var slots = Array.Empty<int>();
             if (objects != null)
             {
-                f = new float[objects.All.Count * 5];
+                slots = new int[objects.All.Count];
+                Array.Fill(slots, -1);
+                var shown = new List<SceneObject>();
+                foreach (var o in objects.All) if (!o.Source.Removed && o.Kind == U9.Formats.Objects.ObjectFileKind.Fixed) shown.Add(o);
+                nFixed = shown.Count;
+                foreach (var o in objects.All) if (!o.Source.Removed && o.Kind != U9.Formats.Objects.ObjectFileKind.Fixed) shown.Add(o);
+                f = new float[shown.Count * 5];
                 int k = 0;
-                foreach (var o in objects.All)
+                foreach (var o in shown)
                 {
-                    if (o.Kind == U9.Formats.Objects.ObjectFileKind.Fixed) nFixed++;
+                    slots[o.Id] = k / 5;
                     f[k++] = o.World.X; f[k++] = o.World.Y; f[k++] = o.World.Z;
                     f[k++] = o.Kind == U9.Formats.Objects.ObjectFileKind.Fixed ? 0 : o.IsLinkZone ? 2 : 1;
                     f[k++] = o.Id;
                 }
             }
-            lock (gate) { markers = f; markersFixed = nFixed; pendingMarkers = f; pendingFixed = nFixed; }
+            lock (gate) { markers = f; markersFixed = nFixed; pendingMarkers = f; pendingFixed = nFixed; markerSlot = slots; pendingMarkerWrites.Clear(); }
         }
 
         /// <summary>The terrain textures for the map shown (null for none).</summary>
@@ -278,7 +319,15 @@ namespace U9Editor.Render
                 pendingRaster = null;
                 tex = pendingTextures;
                 pendingTextures = null;
-                if (pendingModels != null) { UploadModels(pendingModels); pendingModels = null; }
+                if (pendingModels != null) { UploadModels(pendingModels); pendingModels = null; pendingInstances = null; }
+                if (pendingInstances != null) { if (modelsReady) UploadInstances(pendingInstances); pendingInstances = null; }
+                if (pendingInstanceWrites.Count > 0 && modelsReady)
+                {
+                    gl.BindBuffer(BufferTargetARB.ArrayBuffer, instVbo);
+                    foreach (var w in pendingInstanceWrites)
+                        gl.BufferSubData<float>(BufferTargetARB.ArrayBuffer, (nint)(w.Slot * ModelBatch.InstanceFloats * 4), w.Data);
+                }
+                pendingInstanceWrites.Clear();
                 if (pendingMarkers != null)
                 {
                     gl.BindBuffer(BufferTargetARB.ArrayBuffer, markerVbo);
@@ -286,6 +335,13 @@ namespace U9Editor.Render
                     markerFixed = pendingFixed;
                     markerNonfixed = pendingMarkers.Length / 5 - pendingFixed;
                     pendingMarkers = null;
+                }
+                if (pendingMarkerWrites.Count > 0)
+                {
+                    gl.BindBuffer(BufferTargetARB.ArrayBuffer, markerVbo);
+                    foreach (var w in pendingMarkerWrites)
+                        gl.BufferSubData<float>(BufferTargetARB.ArrayBuffer, (nint)(w.Slot * 5 * 4), w.Data);
+                    pendingMarkerWrites.Clear();
                 }
                 rects = pendingRects.ToArray();
                 pendingRects.Clear();
@@ -487,7 +543,7 @@ namespace U9Editor.Render
             gl.DeleteVertexArray(markerVao); gl.DeleteBuffer(markerVbo);
             gl.DeleteProgram(modelProg); gl.DeleteVertexArray(modelVao); gl.DeleteBuffer(modelVbo); gl.DeleteBuffer(instVbo);
             gl.DeleteTexture(modelTexA); gl.DeleteTexture(modelTexB);
-            modelsReady = false; modelDraws.Clear();
+            modelsReady = false; modelDraws.Clear(); uploadedGeometry = -1;
             markerFixed = markerNonfixed = 0;
             gl.DeleteVertexArray(gridVao); gl.DeleteBuffer(gridVbo); gl.DeleteBuffer(gridEbo);
             gl.DeleteVertexArray(waterVao); gl.DeleteBuffer(waterVbo);

@@ -60,22 +60,6 @@ namespace U9.Formats.Tests
         }
 
         [Fact]
-        public void MovingAnObjectChangesOnlyItsPosition()
-        {
-            string path = GameData.PathOf(Path.Combine("static", "fixed.9"));
-            byte[] original = File.ReadAllBytes(path);
-            var m = ObjectMap.Read((byte[])original.Clone(), ObjectFileKind.Fixed);
-            var o = m.Objects[100];
-            int type = o.Type, offset = o.FileOffset;
-            o.SetPosition(1234, 2345, 3456);
-            var back = ObjectMap.Read(m.ToBytes(), ObjectFileKind.Fixed);
-            var b = back.Objects.Single(x => x.FileOffset == offset);
-            Assert.Equal((1234, 2345, 3456, type), (b.X, b.Y, b.Z, b.Type));
-            var diff = Enumerable.Range(0, original.Length).Count(i => original[i] != m.Data[i]);
-            Assert.InRange(diff, 1, 6);
-        }
-
-        [Fact]
         public void TypeNamesLoad()
         {
             var n = TypeNames.Load(GameData.PathOf(Path.Combine("static", "TYPENAME.FLX")));

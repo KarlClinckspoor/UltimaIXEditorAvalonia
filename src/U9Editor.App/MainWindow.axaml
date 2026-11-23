@@ -8,9 +8,25 @@
       <MenuItem Header="_File">
         <MenuItem Header="_Open game folder…" Click="OnOpenFolder" />
         <Separator />
+        <MenuItem Header="_Save map objects" InputGesture="Ctrl+S" Click="OnSave" />
+        <Separator />
         <MenuItem Header="Save _picture of the view…" Click="OnSavePicture" />
         <Separator />
         <MenuItem Header="E_xit" Click="OnExit" />
+      </MenuItem>
+      <MenuItem Header="_Edit">
+        <MenuItem x:Name="UndoItem" Header="_Undo" InputGesture="Ctrl+Z" Click="OnUndo" />
+        <MenuItem x:Name="RedoItem" Header="_Redo" InputGesture="Ctrl+Y" Click="OnRedo" />
+        <Separator />
+        <MenuItem Header="_Copy the selected object" InputGesture="Ctrl+D" Click="OnDuplicate" />
+        <MenuItem Header="_Delete the selected object" InputGesture="Delete" Click="OnDelete" />
+        <MenuItem Header="Put it on the _ground" InputGesture="End" Click="OnDropToGround" />
+        <MenuItem Header="Turn it _left (15°, Shift 1°)" InputGesture="OemOpenBrackets" Click="OnTurnLeft" />
+        <MenuItem Header="Turn it _right (15°, Shift 1°)" InputGesture="OemCloseBrackets" Click="OnTurnRight" />
+        <MenuItem Header="Raise it (16 units, Shift 2)" InputGesture="PageUp" Click="OnRaise" />
+        <MenuItem Header="Lower it (16 units, Shift 2)" InputGesture="PageDown" Click="OnLower" />
+        <Separator />
+        <MenuItem x:Name="FollowItem" Header="Dragged objects _follow the terrain" ToggleType="CheckBox" IsChecked="True" Click="OnToggleFollow" />
       </MenuItem>
       <MenuItem Header="_View">
         <MenuItem Header="_Textures" Click="OnColourTextures" />
@@ -52,6 +68,27 @@
     </Border>
     <Border DockPanel.Dock="Right" Width="380" BorderThickness="1,0,0,0" BorderBrush="#33FFFFFF" Padding="6">
       <DockPanel>
+        <StackPanel x:Name="ObjectPanel" DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,12" KeyDown="OnObjectPanelKey">
+          <TextBlock Text="Selected object" FontWeight="SemiBold" />
+          <TextBlock x:Name="ObjectTitle" FontSize="12" TextWrapping="Wrap" Text="Click an object to select it; drag it to move it." />
+          <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto" x:Name="ObjectFields" IsEnabled="False">
+            <TextBlock Text="X" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <TextBox x:Name="EditX" Grid.Column="1" FontSize="12" Margin="0,0,8,4" ToolTip.Tip="Points east (1/128 steps)" />
+            <TextBlock Text="Row" Grid.Column="2" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <TextBox x:Name="EditRow" Grid.Column="3" FontSize="12" Margin="0,0,0,4" ToolTip.Tip="Points north (1/128 steps)" />
+            <TextBlock Text="Z" Grid.Row="1" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <TextBox x:Name="EditZ" Grid.Row="1" Grid.Column="1" FontSize="12" Margin="0,0,8,0" ToolTip.Tip="Height in object units (4 per terrain height step)" />
+            <TextBlock Text="Turn °" Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <TextBox x:Name="EditYaw" Grid.Row="1" Grid.Column="3" FontSize="12" ToolTip.Tip="Degrees counter-clockwise seen from above" />
+          </Grid>
+          <StackPanel Orientation="Horizontal" Spacing="6" x:Name="ObjectButtons" IsEnabled="False">
+            <Button Content="Apply" Click="OnApplyObject" ToolTip.Tip="Enter in a field does the same" />
+            <Button Content="To ground" Click="OnDropToGround" />
+            <Button Content="Copy" Click="OnDuplicate" />
+            <Button Content="Delete" Click="OnDelete" />
+          </StackPanel>
+          <TextBlock x:Name="ObjectDetails" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+        </StackPanel>
         <TextBlock x:Name="LinksHeader" DockPanel.Dock="Top" Text="Map links" FontWeight="SemiBold" Margin="0,0,0,2" />
         <TextBlock DockPanel.Dock="Top" Opacity="0.6" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"
                    Text="Click: show the trigger zone. Double-click: go to where it leads (opens the other map)." />
