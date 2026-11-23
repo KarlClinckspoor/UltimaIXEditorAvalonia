@@ -155,7 +155,7 @@ namespace U9Editor.Render
                 {
                     if (o.Kind == U9.Formats.Objects.ObjectFileKind.Fixed) nFixed++;
                     f[k++] = o.World.X; f[k++] = o.World.Y; f[k++] = o.World.Z;
-                    f[k++] = o.Kind == U9.Formats.Objects.ObjectFileKind.Fixed ? 0 : 1;
+                    f[k++] = o.Kind == U9.Formats.Objects.ObjectFileKind.Fixed ? 0 : o.IsLinkZone ? 2 : 1;
                     f[k++] = o.Id;
                 }
             }

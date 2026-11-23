@@ -33,13 +33,34 @@ namespace U9.Formats.Objects
         /// <summary>Height in object units: 4 x the terrain height scale.</summary>
         public int Z => BinaryPrimitives.ReadUInt16LittleEndian(Rec.Slice(8));
         public int Type => BinaryPrimitives.ReadUInt16LittleEndian(Rec.Slice(0x0A));
-        /// <summary>The three stored quaternion components (x, y, z) at +0x0C, as signed 0.15 fixed point.</summary>
-        public (short X, short Y, short Z) Rotation =>
-            (BinaryPrimitives.ReadInt16LittleEndian(Rec.Slice(0x0C)), BinaryPrimitives.ReadInt16LittleEndian(Rec.Slice(0x0E)), BinaryPrimitives.ReadInt16LittleEndian(Rec.Slice(0x10)));
-        /// <summary>Fixed: u16 flags at +0x12. Nonfixed: u32 flags at +0x14.</summary>
+        /// <summary>
+        /// Rotation quaternion stored at +0x0C as int16 (x, y, z, w), magnitude 32767; normalised here. Applied as is
+        /// (not conjugated): checked on chains of fences and walls, and every fixed.9 quaternion has length 1.
+        /// </summary>
+        public System.Numerics.Quaternion Rotation => new System.Numerics.Quaternion(
+            BinaryPrimitives.ReadInt16LittleEndian(Rec.Slice(0x0C)) / 32767f, BinaryPrimitives.ReadInt16LittleEndian(Rec.Slice(0x0E)) / 32767f,
+            BinaryPrimitives.ReadInt16LittleEndian(Rec.Slice(0x10)) / 32767f, BinaryPrimitives.ReadInt16LittleEndian(Rec.Slice(0x12)) / 32767f);
+        /// <summary>Fixed: u16 flags at +0x14. Nonfixed: u32 flags at +0x14.</summary>
         public uint Flags => Owner.Kind == ObjectFileKind.Fixed
-            ? BinaryPrimitives.ReadUInt16LittleEndian(Rec.Slice(0x12))
+            ? BinaryPrimitives.ReadUInt16LittleEndian(Rec.Slice(0x14))
             : BinaryPrimitives.ReadUInt32LittleEndian(Rec.Slice(0x14));
+
+        /// <summary>Nonfixed only: model (sappear.flx record) at +0x18, overriding the type's default model.</summary>
+        public int Model => Owner.Kind == ObjectFileKind.Nonfixed ? BinaryPrimitives.ReadUInt16LittleEndian(Rec.Slice(0x18)) : -1;
+        /// <summary>Nonfixed only: link number at +0x1A, which triggers use to find each other's objects (map change arrival markers).</summary>
+        public int Link => Owner.Kind == ObjectFileKind.Nonfixed ? BinaryPrimitives.ReadUInt16LittleEndian(Rec.Slice(0x1A)) : -1;
+        /// <summary>Nonfixed only: the property segment, or null.</summary>
+        public PropertySegment Properties
+        {
+            get
+            {
+                if (Owner.Kind != ObjectFileKind.Nonfixed) return null;
+                uint p = BinaryPrimitives.ReadUInt32LittleEndian(Rec.Slice(0x1C)) & ~1u;
+                long at = Owner.DataStart + (long)p;
+                if (p == 0 || at + 16 > Owner.Data.Length) return null;
+                return new PropertySegment(Owner.Data.AsSpan((int)at, 16));
+            }
+        }
 
         /// <summary>The raw record bytes (a copy).</summary>
         public byte[] Raw => Rec.ToArray();
@@ -62,6 +83,39 @@ namespace U9.Formats.Objects
     }
 
     /// <summary>
+    /// A nonfixed object's 16-byte property segment: byte 0 the number of properties, bytes 1-3 up to three
+    /// property ids, then six u16 parameters, an (A, B) pair per property. Ids from u9.exe's name table include
+    /// 0x3B SF Trigger and 0x3E OO Trigger (A and B are TRIGGERS.FLX slots), 0x3D / 0x41 Misc Usecode 1 / 2
+    /// (A is a slot), 0x40 Trigger Area, 0x3F Timer, 0x42 Scale, 0x15 Highway Links, 0x08 / 0x09 Portal data,
+    /// 0x83 Creature Link Num, 0xFF Next Property Pointer.
+    /// </summary>
+    public sealed class PropertySegment
+    {
+        public const int SfTrigger = 0x3B, MiscUsecode1 = 0x3D, OoTrigger = 0x3E, TriggerArea = 0x40, MiscUsecode2 = 0x41;
+        public int Count { get; }
+        public int[] Ids { get; } = new int[3];
+        public int[] Params { get; } = new int[6];
+
+        public PropertySegment(ReadOnlySpan<byte> seg)
+        {
+            Count = seg[0];
+            for (int i = 0; i < 3; i++) Ids[i] = seg[1 + i];
+            for (int i = 0; i < 6; i++) Params[i] = BinaryPrimitives.ReadUInt16LittleEndian(seg.Slice(4 + 2 * i));
+        }
+
+        /// <summary>The TRIGGERS.FLX slots this segment names (trigger and usecode properties).</summary>
+        public IEnumerable<int> TriggerSlots()
+        {
+            for (int k = 0; k < 3; k++)
+            {
+                int id = Ids[k];
+                if (id == OoTrigger || id == SfTrigger) { yield return Params[2 * k]; yield return Params[2 * k + 1]; }
+                else if (id == MiscUsecode1 || id == MiscUsecode2) yield return Params[2 * k];
+            }
+        }
+    }
+
+    /// <summary>
     /// The objects of one map: static/fixed.N or runtime/nonfixed.N. Both share one layout:
     /// <list type="bullet">
     /// <item>Header. Fixed: 0x1C bytes (0x08 data size, 0x0C 0x00C00000, 0x10 width, 0x14 height in chunks).
@@ -74,9 +128,9 @@ namespace U9.Formats.Objects
     /// points), +0x14 object count in this page, +0x20 16 u32 list heads, one per 4 x 4-tile subchunk (offsets from
     /// the data start), each the start of a list linked through the record's first u32.</item>
     /// <item>Record: +0x00 next, +0x04 x, +0x06 y, +0x08 z (u16; x and y from the chunk base, 128 per point; z is
-    /// 4 x the terrain height), +0x0A type, +0x0C three int16 quaternion parts. Fixed (24 bytes): +0x12 u16 flags,
-    /// +0x14 u32 unknown. Nonfixed (32 bytes): +0x14 u32 flags, +0x18 u16 model, +0x1A u16 link, +0x1C u32 property
-    /// offset (from the public notes; to be confirmed).</item>
+    /// 4 x the terrain height), +0x0A type, +0x0C int16 quaternion (x, y, z, w). Fixed (24 bytes): +0x14 u16 flags,
+    /// +0x16 u16 unknown. Nonfixed (32 bytes): +0x14 u32 flags, +0x18 u16 model, +0x1A u16 link, +0x1C u32 property
+    /// offset (from the data start, bit 0 masked).</item>
     /// </list>
     /// Checked on Britannia: every page's base matches its table slot, and objects stand on the terrain (median
     /// |z/4 - terrain height| = 14.5 for fixed.9). Lists can run into the chunk's other pages, so records are
@@ -134,7 +188,8 @@ namespace U9.Formats.Objects
                             p = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan((int)at));
                         }
                     }
-                    if (next == 0) break;
+                    // a few pages hold something other than a page offset there: follow only page-aligned values
+                    if (next == 0 || ((next & ~1u) & 0xFFF) != 0) break;
                     page = next & ~1u;
                 }
             }

@@ -140,7 +140,8 @@ void main()
     gl_Position = uViewProj * vec4(aPos, 1.0);
     int id = int(aId + 0.5);
     float size = clamp(uPointScale / gl_Position.w, 3.0, 14.0);
-    vColour = aKind < 0.5 ? vec3(1.0, 0.62, 0.15) : vec3(0.25, 0.9, 1.0);
+    vColour = aKind < 0.5 ? vec3(1.0, 0.62, 0.15) : aKind < 1.5 ? vec3(0.25, 0.9, 1.0) : vec3(1.0, 0.95, 0.1);
+    if (aKind > 1.5) size = max(size, 9.0) + 3.0;
     if (id == uHover) { vColour = vec3(1.0); size += 4.0; }
     if (id == uSelected) { vColour = vec3(1.0, 0.2, 0.9); size += 6.0; }
     gl_PointSize = size;

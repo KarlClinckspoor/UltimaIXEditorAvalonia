@@ -13,9 +13,12 @@ namespace U9Editor.Core
         public MapObject Source { get; init; }
         public Vector3 World { get; set; }
         public string Name { get; init; }
+        /// <summary>A trigger zone that changes map (see <see cref="MapLinks"/>).</summary>
+        public bool IsLinkZone { get; set; }
         public override string ToString() =>
             $"{(Kind == ObjectFileKind.Fixed ? "fixed" : "nonfixed")} #{Id}: type {Source.Type}{(Name != null ? " \"" + Name + "\"" : "")}  " +
-            $"at point ({Source.PointX:F2}, {Source.PointRow:F2}) height {Source.TerrainHeight:F1}  flags 0x{Source.Flags:X}";
+            $"at point ({Source.PointX:F2}, {Source.PointRow:F2}) height {Source.TerrainHeight:F1}  flags 0x{Source.Flags:X}" +
+            (Kind == ObjectFileKind.Nonfixed ? $"  link {Source.Link}  model {Source.Model}" : "") + (IsLinkZone ? "  [map change]" : "");
     }
 
     /// <summary>A map's fixed and nonfixed objects in world space, for drawing and picking.</summary>

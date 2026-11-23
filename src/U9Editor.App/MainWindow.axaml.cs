@@ -14,6 +14,7 @@ using Avalonia.Threading;
 using U9.Formats.Flx;
 using U9.Formats.Objects;
 using U9.Formats.Terrain;
+using U9.Formats.Triggers;
 using U9Editor.Core;
 using U9Editor.Render;
 
@@ -25,6 +26,16 @@ namespace U9Editor.App
         GameFolder game;
         FlxArchive bitmaps;
         TypeNames typeNames;
+        MapLinks mapLinks;
+        ObjectMap currentNonfixed;
+        (double X, double Row)? lookAfterLoad;
+
+        sealed class LinkItem
+        {
+            public MapLink Link;
+            public string Text;
+            public override string ToString() => Text;
+        }
         string objectStatus;
         List<MapEntry> maps = new List<MapEntry>();
         TerrainMap terrain;
@@ -82,6 +93,8 @@ namespace U9Editor.App
             if (File.Exists(bmpPath)) bitmaps = FlxArchive.Open(bmpPath);
             string namesPath = Directory.EnumerateFiles(g.StaticFolder, "typename.flx", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault();
             typeNames = namesPath != null ? TypeNames.Load(namesPath) : null;
+            string trigPath = Directory.EnumerateFiles(g.StaticFolder, "triggers.flx", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault();
+            mapLinks = trigPath != null ? new MapLinks(TriggerScripts.Load(trigPath), n => LoadObjectFile("runtime", "nonfixed", n, ObjectFileKind.Nonfixed)) : null;
             maps = g.Maps();
             MapBox.ItemsSource = maps;
             var pick = maps.FirstOrDefault(m => m.Number == mapNumber) ?? maps.FirstOrDefault(m => m.Number == 9) ?? maps.FirstOrDefault();
@@ -110,7 +123,9 @@ namespace U9Editor.App
             var raster = new TerrainRaster(terrain);
             var space = new MapSpace(terrain.Width, terrain.Height) { NorthIsRowZero = settings.NorthIsRowZero };
             View.SetMap(raster, space, MapSpace.WorldY(0) + terrain.WaterHeight / MapSpace.HeightUnitsPerPoint);
-            View.SetObjects(LoadObjects(m.Number, space));
+            var objects = LoadObjects(m.Number, space);
+            View.SetObjects(objects);
+            ShowLinks(m, objects);
             TerrainTextures textures = null;
             if (bitmaps != null)
             {
@@ -118,6 +133,7 @@ namespace U9Editor.App
                 View.SetTextures(textures);
             }
             View.FrameMap();
+            if (lookAfterLoad is { } look) { View.LookAt(look.X, look.Row, 30); lookAfterLoad = null; }
             MapInfo.Text = $"{terrain.Width}x{terrain.Height} points, {terrain.Chunks.Count} chunks, water at height {terrain.WaterHeight}, " +
                            $"waves {terrain.WaveAmplitude}, flags 0x{terrain.Flags:X}, " +
                            $"{textures?.Layers.Count ?? 0} texture frames, " +
@@ -125,17 +141,70 @@ namespace U9Editor.App
             StatusText.Text = "Left drag orbits, middle or Shift+drag pans, wheel zooms, W/A/S/D move, Q/E turn, click selects a point.";
         }
 
+        ObjectMap LoadObjectFile(string folder, string name, int number, ObjectFileKind kind)
+        {
+            string dir = Path.Combine(game.Root, folder);
+            string f = Directory.Exists(dir) ? Directory.EnumerateFiles(dir, $"{name}.{number}", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault() : null;
+            if (f == null) return null;
+            try { return ObjectMap.Load(f, kind); }
+            catch (InvalidDataException) { return null; }
+        }
+
         SceneObjects LoadObjects(int number, MapSpace space)
         {
-            ObjectMap Load(string folder, string name, ObjectFileKind kind)
+            currentNonfixed = LoadObjectFile("runtime", "nonfixed", number, ObjectFileKind.Nonfixed);
+            return SceneObjects.Build(LoadObjectFile("static", "fixed", number, ObjectFileKind.Fixed), currentNonfixed, space, typeNames);
+        }
+
+        void ShowLinks(MapEntry m, SceneObjects objects)
+        {
+            var items = new List<LinkItem>();
+            if (mapLinks != null && currentNonfixed != null)
             {
-                string dir = Path.Combine(game.Root, folder);
-                string f = Directory.Exists(dir) ? Directory.EnumerateFiles(dir, $"{name}.{number}", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault() : null;
-                if (f == null) return null;
-                try { return ObjectMap.Load(f, kind); }
-                catch (InvalidDataException) { return null; }
+                mapLinks.Remember(m.Number, currentNonfixed);
+                var zones = new HashSet<int>();
+                foreach (var l in mapLinks.From(m.Number).OrderBy(l => l.DestinationMap).ThenBy(l => l.Zone.PointX))
+                {
+                    zones.Add(l.Zone.FileOffset);
+                    string dest = maps.FirstOrDefault(e => e.Number == l.DestinationMap)?.Name ?? "?";
+                    string where = l.Resolved ? $"({l.Arrival.PointX:F1}, {l.Arrival.PointRow:F1})" : $"link {l.DestinationLink} not found";
+                    items.Add(new LinkItem
+                    {
+                        Link = l,
+                        Text = $"({l.Zone.PointX:F1}, {l.Zone.PointRow:F1})  ->  map {l.DestinationMap} {dest}  {where}" +
+                               (l.DestinationMap == m.Number ? "  [same map]" : ""),
+                    });
+                }
+                foreach (var o in objects.All) o.IsLinkZone = o.Kind == ObjectFileKind.Nonfixed && zones.Contains(o.Source.FileOffset);
+                View.RefreshObjects();
             }
-            return SceneObjects.Build(Load("static", "fixed", ObjectFileKind.Fixed), Load("runtime", "nonfixed", ObjectFileKind.Nonfixed), space, typeNames);
+            LinksList.ItemsSource = items;
+            LinksHeader.Text = $"Map links ({items.Count}, {items.Count(i => i.Link.Resolved)} resolved)";
+        }
+
+        void OnLinkSelected(object sender, SelectionChangedEventArgs e)
+        {
+            if (LinksList.SelectedItem is not LinkItem li) return;
+            View.LookAt(li.Link.Zone.PointX, li.Link.Zone.PointRow, 30);
+            View.SelectObject(View.Objects?.All.FirstOrDefault(o => o.Source.FileOffset == li.Link.Zone.FileOffset && o.Kind == ObjectFileKind.Nonfixed));
+            StatusText.Text = $"trigger {li.Link.TriggerSlot}: {li.Link.Ops}   destination link {li.Link.DestinationLink}, marker type {li.Link.MarkerType}, flags 0x{li.Link.Flags:X2}";
+        }
+
+        void OnLinkGo(object sender, Avalonia.Input.TappedEventArgs e)
+        {
+            if (LinksList.SelectedItem is not LinkItem li || !li.Link.Resolved) return;
+            var a = li.Link.Arrival;
+            if (li.Link.DestinationMap != current?.Number)
+            {
+                var target = maps.FirstOrDefault(x => x.Number == li.Link.DestinationMap);
+                if (target == null) { StatusText.Text = $"Map {li.Link.DestinationMap} has no terrain to show."; return; }
+                lookAfterLoad = (a.PointX, a.PointRow);
+                MapBox.SelectedItem = target;      // loads it (OnMapChanged)
+            }
+            else View.LookAt(a.PointX, a.PointRow, 30);
+            View.State.SelectedX = (int)a.PointX; View.State.SelectedRow = (int)a.PointRow;
+            View.Redraw();
+            StatusText.Text = $"Arrived from map {li.Link.SourceMap} at ({a.PointX:F2}, {a.PointRow:F2}), height {a.TerrainHeight:F1}";
         }
 
         string Describe(TerrainHit h, string prefix)

@@ -169,6 +169,30 @@ namespace U9Editor.App
             CameraMoved();
         }
 
+        /// <summary>Looks at a point of the map from the given distance, keeping the camera's angles.</summary>
+        public void LookAt(double x, double row, float distance)
+        {
+            if (raster == null) return;
+            Camera.Target = new System.Numerics.Vector3((float)x, MapSpace.WorldY(raster.HeightAt((int)x, (int)row)), space.WorldZ((float)row));
+            Camera.Distance = distance;
+            CameraMoved();
+        }
+
+        /// <summary>Selects an object as a click would.</summary>
+        public void SelectObject(SceneObject o)
+        {
+            State.SelectedObject = o?.Id ?? -1;
+            ObjectPicked?.Invoke(o);
+            Redraw();
+        }
+
+        /// <summary>The objects changed how they are drawn (link zones found, say).</summary>
+        public void RefreshObjects()
+        {
+            renderer.SetObjects(objects);
+            Redraw();
+        }
+
         public void SetTopDown(bool on)
         {
             Camera.Orthographic = on;

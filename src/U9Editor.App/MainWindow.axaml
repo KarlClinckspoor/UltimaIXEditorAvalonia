@@ -47,6 +47,14 @@
         <TextBlock x:Name="StatusText" />
       </DockPanel>
     </Border>
+    <Border DockPanel.Dock="Right" Width="380" BorderThickness="1,0,0,0" BorderBrush="#33FFFFFF" Padding="6">
+      <DockPanel>
+        <TextBlock x:Name="LinksHeader" DockPanel.Dock="Top" Text="Map links" FontWeight="SemiBold" Margin="0,0,0,2" />
+        <TextBlock DockPanel.Dock="Top" Opacity="0.6" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"
+                   Text="Click: show the trigger zone. Double-click: go to where it leads (opens the other map)." />
+        <ListBox x:Name="LinksList" FontSize="12" SelectionChanged="OnLinkSelected" DoubleTapped="OnLinkGo" />
+      </DockPanel>
+    </Border>
     <Grid>
       <local:MapView x:Name="View" />
       <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" Width="56" Height="56"

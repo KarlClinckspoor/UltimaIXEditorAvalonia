@@ -21,13 +21,13 @@ namespace U9.Formats.Bitmaps
     /// <item>0x08 u32: frame count. 0x0C: 4 bytes, unknown.</item>
     /// <item>0x10: per frame, (u32 offset from the record start, u32 length).</item>
     /// </list>
-    /// <para>Frame: 0x00 u32 flags (bit 30: pixel format, see below; the rest unknown), 0x04 u32 width, 0x08 u32 height,
+    /// <para>Frame: 0x00 u16, 0x02 u16 (byte 1's low nibble is the pixel format, see below; the rest unknown), 0x04 u32 width, 0x08 u32 height,
     /// 0x0C 8 bytes unknown (zero), 0x14 one u32 offset per row (from the frame start; 30 frames leave it unwritten, 0xCDCDCDCD, with the rows packed right after it), then the pixels, then
     /// smaller mipmaps (ignored here: the renderer builds its own).</para>
-    /// <para>Pixel, when frame flag bit 30 is set (6013 of 6599 records, all terrain and most model textures): RGB565,
-    /// opaque — bits 0-4 blue, 5-10 green, 11-15 red. When it is clear (interface pictures such as the world map,
-    /// record 534): bits 0-4 blue, 5-9 green, 10-14 red, bit 15 set = opaque. Checked by eye on terrain textures
-    /// 1, 2, 8, 10, 11, 24, 36, 46 (565 gives sand, rock and grass; 555 gives green noise) and on record 534.</para>
+    /// <para>Pixel formats: 4 = RGB565 opaque (all terrain, most model textures); 5 = ARGB1555, bits 10-14 red, 5-9
+    /// green, 0-4 blue, bit 15 set = opaque (alpha-tested textures, interface pictures such as the world map, record
+    /// 534); 3 = 8-bit intensity, no palette (glow, smoke, lightning: returned as grey with alpha = value). Checked by
+    /// eye on terrain textures 1, 2, 8, 10, 11, 24, 36, 46 and on record 534.</para>
     /// <para>Terrain: a point's texture number is the record number and its frame number the frame.</para>
     /// </summary>
     public static class Bitmap16
@@ -52,19 +52,27 @@ namespace U9.Formats.Bitmaps
             int w = (int)BinaryPrimitives.ReadUInt32LittleEndian(f.Slice(4));
             int h = (int)BinaryPrimitives.ReadUInt32LittleEndian(f.Slice(8));
             if (w <= 0 || h <= 0 || w > 4096 || h > 4096 || 0x14 + 4 * h > fl) throw new InvalidDataException($"Frame {frame} has a bad size {w}x{h}");
-            bool rgb565 = (BinaryPrimitives.ReadUInt32LittleEndian(f) & 0x40000000u) != 0;
+            int format = (f[1] & 0x0F);
+            if (format != 3 && format != 4 && format != 5) format = 5;
             var rgba = new byte[w * h * 4];
             for (int y = 0; y < h; y++)
             {
                 // 30 shipped frames have the row table left as 0xCDCDCDCD (never written); their rows follow the table
+                int bpp = format == 3 ? 1 : 2;
                 long ro = BinaryPrimitives.ReadUInt32LittleEndian(f.Slice(0x14 + 4 * y));
-                if (ro < 0x14 + 4 * h || ro + w * 2 > fl) ro = 0x14 + 4 * h + (long)y * w * 2;
-                if (ro + w * 2 > fl) throw new InvalidDataException($"Row {y} of frame {frame} lies outside the frame");
+                if (ro < 0x14 + 4 * h || ro + w * bpp > fl) ro = 0x14 + 4 * h + (long)y * w * bpp;
+                if (ro + w * bpp > fl) throw new InvalidDataException($"Row {y} of frame {frame} lies outside the frame");
                 for (int x = 0; x < w; x++)
                 {
-                    ushort v = BinaryPrimitives.ReadUInt16LittleEndian(f.Slice((int)ro + x * 2));
                     int o = (x + y * w) * 4;
-                    if (rgb565)
+                    if (format == 3)
+                    {
+                        byte i = f[(int)ro + x];
+                        rgba[o] = rgba[o + 1] = rgba[o + 2] = rgba[o + 3] = i;
+                        continue;
+                    }
+                    ushort v = BinaryPrimitives.ReadUInt16LittleEndian(f.Slice((int)ro + x * 2));
+                    if (format == 4)
                     {
                         rgba[o] = Expand(v >> 11);
                         rgba[o + 1] = (byte)(((v >> 5) & 63) << 2 | ((v >> 5) & 63) >> 4);
