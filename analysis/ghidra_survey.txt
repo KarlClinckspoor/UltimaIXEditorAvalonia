@@ -1,0 +1,36 @@
+functions=13574 named(non-FUN_)=6149 thunks=367 bytesInFunctions=2209333
+sizes={a <32=7881, b 32-127=2460, c 128-511=2335, d 512-2047=709, e 2K-8K=182, f >8K=7}
+block Headers 00400000 size 1024
+block .text 00401000 size 3402752
+block .rdata 00740000 size 255488
+block .data 0077f000 size 12282244
+block _ADATA 01336000 size 3584
+block .rsrc 01337000 size 3072
+block tdb ffdff000 size 4096
+decompile sample 400: ok=400 fail=0 withWarnings=14 ms=2662
+STRING 'R6025 - pure virtual function call ' at 0075ca5c
+STRING 'Selected D3D device: %s' at 00785e7c
+STRING 'Too many nearby items -- unrecoverable error, exiting!' at 00788c48
+   ref from 004c3b48 in FUN_004c39b0 size 467
+STRING 'TrapErrors' at 0078db28
+   ref from 004febc5 in FUN_004fb840 size 15368
+STRING 'Error reading save game' at 0078f8d8
+   ref from 0051e6ff in FUN_0051dd50 size 2582
+STRING 'Error reading save game.' at 0078f99c
+   ref from 00521d5f in FUN_0051efa0 size 2310
+STRING 'Game Crash at Map:%d Coord:%d,%d,%d' at 007939f4
+   ref from 00556562 in FUN_00556490 size 298
+STRING 'DirectDrawCreateEx' at 0079b8a0
+   ref from 0059c4e2 in FUN_0059c4a0 size 424
+STRING 'glide2x.dll' at 0079c8a8
+   ref from 005a19de in FUN_005a19d0 size 1146
+STRING '_grSstWinOpen@28' at 0079c914
+   ref from 005a1a68 in FUN_005a19d0 size 1146
+STRING 'Argghhh!  Who's there?  Demons!  Too many of them, couldn't hold them off!' at 007e4ed0
+   ref from 006a4c83 in FUN_006a4bd0 size 330
+extern timeGetTime refs=8
+extern CreateThread refs=3
+extern GetTickCount refs=243
+extern LoadLibraryA refs=6
+extern SetUnhandledExceptionFilter refs=1
+extern Sleep refs=1

@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+.idea/
+*.user
+TestResults/
+# game files are never committed: keep the install copy in gamedata/ or set U9_GAMEDATA
+gamedata/
+out/
+.claude/settings.local.json
