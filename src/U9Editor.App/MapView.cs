@@ -122,6 +122,12 @@ namespace U9Editor.App
             Redraw();
         }
 
+        public void SetTextures(TerrainTextures t)
+        {
+            renderer.SetTextures(t);
+            Redraw();
+        }
+
         /// <summary>Points in a rectangle changed in the raster.</summary>
         public void InvalidatePoints(int x, int row, int w, int h)
         {

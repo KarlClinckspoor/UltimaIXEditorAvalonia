@@ -7,7 +7,7 @@ namespace U9Editor.Render
     static class Shaders
     {
         public static string Header(bool gles) =>
-            gles ? "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp usampler2D;\n" : "#version 330 core\n";
+            gles ? "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp usampler2D;\nprecision highp sampler2DArray;\n" : "#version 330 core\n";
 
         // The terrain: a block of grid vertices, each placed by the raw point it stands on (uPoints, R32UI).
         public const string TerrainVertex = @"
@@ -49,7 +49,12 @@ in vec3 vNormal;
 in vec2 vPoint;
 uniform usampler2D uPoints;
 uniform ivec2 uSize;
-uniform int uColourMode;      // 0 height, 1 texture number, 2 flags
+uniform int uColourMode;      // 0 height, 1 texture number, 2 flags, 3 textures
+uniform sampler2DArray uTerrainTex;
+uniform usampler2D uLookup;   // (frame, texture) -> layer + 1
+uniform int uHaveTextures;
+uniform int uUvRotate;        // debug: quarter turns applied to every quad's texture
+uniform int uUvFlipV;         // debug: texture rows run the other way
 uniform float uWaterY;
 uniform float uMaxY;
 uniform int uHoleMode;        // 0 cut out, 1 show in magenta
@@ -83,11 +88,26 @@ void main()
     bool hole = (raw & 0x1000u) != 0u;
     if (hole && uHoleMode == 0) discard;
 
-    vec3 base;
-    if (uColourMode == 1) base = hashColour(raw >> 22);
+    vec3 base = vec3(0.5);
+    if (uColourMode == 3 && uHaveTextures == 1)
+    {
+        uint layer = texelFetch(uLookup, ivec2(int((raw >> 16) & 63u), int(raw >> 22)), 0).r;
+        if (layer == 0u) base = vec3(1.0, 0.0, 1.0) * 0.6;
+        else
+        {
+            vec2 uv = fract(vPoint);
+            if (uUvFlipV == 1) uv.y = 1.0 - uv.y;
+            for (int i = 0; i < uUvRotate; i++) uv = vec2(uv.y, 1.0 - uv.x);
+            if ((raw & 0x2000u) != 0u) uv = uv.yx;              // swap
+            if ((raw & 0x4000u) != 0u) uv = vec2(1.0) - uv;      // mirror
+            // gradients from the continuous point position, so the quad edges do not pick the smallest mipmap
+            base = textureGrad(uTerrainTex, vec3(uv, float(layer - 1u)), dFdx(vPoint), dFdy(vPoint)).rgb;
+        }
+    }
+    else if (uColourMode == 1) base = hashColour(raw >> 22);
     else if (uColourMode == 2)
         base = vec3((raw & 0x2000u) != 0u ? 0.9 : 0.25, (raw & 0x4000u) != 0u ? 0.9 : 0.25, (raw & 0x8000u) != 0u ? 0.9 : 0.25);
-    else base = heightColour(vWorld.y);
+    else if (uColourMode == 0 || uColourMode == 3) base = heightColour(vWorld.y);
 
     vec3 sun = normalize(vec3(-0.45, 0.8, 0.35));
     float light = 0.35 + 0.65 * max(dot(normalize(vNormal), sun), 0.0);

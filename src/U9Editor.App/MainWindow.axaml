@@ -13,6 +13,7 @@
         <MenuItem Header="E_xit" Click="OnExit" />
       </MenuItem>
       <MenuItem Header="_View">
+        <MenuItem Header="_Textures" Click="OnColourTextures" />
         <MenuItem Header="Colour by _height" Click="OnColourHeight" />
         <MenuItem Header="Colour by _texture number" Click="OnColourTexture" />
         <MenuItem Header="Colour by swap/mirror/bit 15 _flags" Click="OnColourFlags" />
@@ -24,6 +25,10 @@
         <MenuItem x:Name="TopDownItem" Header="Top-_down map" ToggleType="CheckBox" InputGesture="Tab" Click="OnToggleTopDown" />
         <MenuItem Header="_Frame the whole map" InputGesture="Home" Click="OnFrame" />
         <Separator />
+        <MenuItem Header="Texture _debug">
+          <MenuItem Header="Turn every quad's texture a quarter" Click="OnUvRotate" />
+          <MenuItem x:Name="FlipVItem" Header="Texture rows the other way" ToggleType="CheckBox" Click="OnUvFlip" />
+        </MenuItem>
         <MenuItem x:Name="NorthItem" Header="_North is point row 0 (debug: the game puts north at the last row)" ToggleType="CheckBox" Click="OnToggleNorth" />
       </MenuItem>
     </Menu>

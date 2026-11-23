@@ -9,8 +9,11 @@ namespace U9Editor.Render
     /// <summary>What the view should show and highlight this frame.</summary>
     public sealed class ViewState
     {
-        public enum Colouring { Height = 0, Texture = 1, Flags = 2 }
-        public Colouring Colour = Colouring.Height;
+        public enum Colouring { Height = 0, TextureNumber = 1, Flags = 2, Textures = 3 }
+        public Colouring Colour = Colouring.Textures;
+        /// <summary>Debug: quarter turns for every quad's texture, and texture rows the other way.</summary>
+        public int UvRotate;
+        public bool UvFlipV;
         public bool ShowWater = true;
         public bool ShowHoles;
         public bool TileGrid;
@@ -33,7 +36,9 @@ namespace U9Editor.Render
         GL gl;
         uint terrainProg, waterProg;
         uint gridVao, gridVbo, gridEbo, waterVao, waterVbo;
-        uint pointsTex;
+        uint pointsTex, terrainTex, lookupTex;
+        bool haveTextures;
+        TerrainTextures pendingTextures;
         uint gridIndexCount;
         int texWidth, texHeight;
         readonly Dictionary<(uint, string), int> uniforms = new Dictionary<(uint, string), int>();
@@ -63,9 +68,11 @@ namespace U9Editor.Render
             gl.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, 8, (void*)0);
             gl.BindVertexArray(0);
             pointsTex = gl.GenTexture();
+            terrainTex = gl.GenTexture();
+            lookupTex = gl.GenTexture();
             Info = $"{gl.GetStringS(StringName.Version)} — {gl.GetStringS(StringName.Renderer)}";
             // a new context starts empty: the map goes up again
-            if (raster != null) lock (gate) pendingRaster ??= raster;
+            if (raster != null) lock (gate) { pendingRaster ??= raster; pendingTextures ??= textures; }
         }
 
         void BuildGrid()
@@ -112,6 +119,40 @@ namespace U9Editor.Render
             }
         }
 
+        TerrainTextures textures;
+
+        /// <summary>The terrain textures for the map shown (null for none).</summary>
+        public void SetTextures(TerrainTextures t)
+        {
+            lock (gate) { textures = t; pendingTextures = t; }
+        }
+
+        void UploadTextures(TerrainTextures t)
+        {
+            haveTextures = false;
+            if (t == null || t.Layers.Count == 0) return;
+            int n = t.Layers.Count, size = TerrainTextures.LayerSize;
+            gl.BindTexture(TextureTarget.Texture2DArray, terrainTex);
+            gl.TexImage3D(TextureTarget.Texture2DArray, 0, InternalFormat.Rgba8, (uint)size, (uint)size, (uint)n, 0, PixelFormat.Rgba, PixelType.UnsignedByte, null);
+            for (int i = 0; i < n; i++)
+                fixed (byte* p = t.Layers[i])
+                    gl.TexSubImage3D(TextureTarget.Texture2DArray, 0, 0, 0, i, (uint)size, (uint)size, 1, PixelFormat.Rgba, PixelType.UnsignedByte, p);
+            gl.GenerateMipmap(TextureTarget.Texture2DArray);
+            gl.TexParameter(TextureTarget.Texture2DArray, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.LinearMipmapLinear);
+            gl.TexParameter(TextureTarget.Texture2DArray, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
+            gl.TexParameter(TextureTarget.Texture2DArray, TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            gl.TexParameter(TextureTarget.Texture2DArray, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+
+            gl.BindTexture(TextureTarget.Texture2D, lookupTex);
+            gl.PixelStore(PixelStoreParameter.UnpackAlignment, 2);
+            fixed (ushort* p = t.Lookup)
+                gl.TexImage2D(TextureTarget.Texture2D, 0, InternalFormat.R16ui, TerrainTextures.Frames, TerrainTextures.Textures, 0, PixelFormat.RedInteger, PixelType.UnsignedShort, p);
+            gl.PixelStore(PixelStoreParameter.UnpackAlignment, 4);
+            gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            haveTextures = true;
+        }
+
         /// <summary>Points in the rectangle changed in the raster: send them again.</summary>
         public void Invalidate(int x, int row, int w, int h)
         {
@@ -121,14 +162,18 @@ namespace U9Editor.Render
         void Upload()
         {
             TerrainRaster full;
+            TerrainTextures tex;
             (int X, int Y, int W, int H)[] rects;
             lock (gate)
             {
                 full = pendingRaster;
                 pendingRaster = null;
+                tex = pendingTextures;
+                pendingTextures = null;
                 rects = pendingRects.ToArray();
                 pendingRects.Clear();
             }
+            if (tex != null) UploadTextures(tex);
             gl.BindTexture(TextureTarget.Texture2D, pointsTex);
             gl.PixelStore(PixelStoreParameter.UnpackAlignment, 4);
             if (full != null && full.Width > 0)
@@ -200,6 +245,15 @@ namespace U9Editor.Render
                 gl.Uniform1(U(terrainProg, "uTileGrid"), st.TileGrid ? 1 : 0);
                 gl.Uniform2(U(terrainProg, "uHover"), st.HoverX, st.HoverRow);
                 gl.Uniform2(U(terrainProg, "uSelected"), st.SelectedX, st.SelectedRow);
+                gl.Uniform1(U(terrainProg, "uHaveTextures"), haveTextures ? 1 : 0);
+                gl.Uniform1(U(terrainProg, "uUvRotate"), st.UvRotate & 3);
+                gl.Uniform1(U(terrainProg, "uUvFlipV"), st.UvFlipV ? 1 : 0);
+                gl.ActiveTexture(TextureUnit.Texture1);
+                gl.BindTexture(TextureTarget.Texture2DArray, terrainTex);
+                gl.Uniform1(U(terrainProg, "uTerrainTex"), 1);
+                gl.ActiveTexture(TextureUnit.Texture2);
+                gl.BindTexture(TextureTarget.Texture2D, lookupTex);
+                gl.Uniform1(U(terrainProg, "uLookup"), 2);
                 gl.ActiveTexture(TextureUnit.Texture0);
                 gl.BindTexture(TextureTarget.Texture2D, pointsTex);
                 gl.Uniform1(U(terrainProg, "uPoints"), 0);
@@ -272,7 +326,8 @@ namespace U9Editor.Render
             gl.DeleteProgram(terrainProg); gl.DeleteProgram(waterProg);
             gl.DeleteVertexArray(gridVao); gl.DeleteBuffer(gridVbo); gl.DeleteBuffer(gridEbo);
             gl.DeleteVertexArray(waterVao); gl.DeleteBuffer(waterVbo);
-            gl.DeleteTexture(pointsTex);
+            gl.DeleteTexture(pointsTex); gl.DeleteTexture(terrainTex); gl.DeleteTexture(lookupTex);
+            haveTextures = false;
             uniforms.Clear();
             texWidth = texHeight = 0;
             gl = null;

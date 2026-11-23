@@ -11,6 +11,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using U9.Formats.Flx;
 using U9.Formats.Terrain;
 using U9Editor.Core;
 using U9Editor.Render;
@@ -21,6 +22,7 @@ namespace U9Editor.App
     {
         readonly Settings settings = Settings.Load();
         GameFolder game;
+        FlxArchive bitmaps;
         List<MapEntry> maps = new List<MapEntry>();
         TerrainMap terrain;
         MapEntry current;
@@ -39,6 +41,7 @@ namespace U9Editor.App
             AddHandler(KeyUpEvent, (s, e) => View.CameraKeyUp(e), RoutingStrategies.Tunnel);
             Opened += (s, e) => OpenAtStart();
             Closing += (s, e) => settings.Save();
+            Closed += (s, e) => bitmaps?.Dispose();
         }
 
         void OpenAtStart()
@@ -53,12 +56,25 @@ namespace U9Editor.App
             }
             OpenGame(g, Program.GameDataAtStart != null ? Program.MapAtStart : settings.LastMap);
             if (Program.TopDownAtStart) { TopDownItem.IsChecked = true; View.SetTopDown(true); View.FrameMap(); }
+            if (!float.IsNaN(Program.LookX) && View.Raster != null)
+            {
+                var r = View.Raster;
+                View.Camera.Target = new System.Numerics.Vector3(Program.LookX, MapSpace.WorldY(r.HeightAt((int)Program.LookX, (int)Program.LookRow)), View.Space.WorldZ(Program.LookRow));
+            }
+            if (!float.IsNaN(Program.Distance)) View.Camera.Distance = Program.Distance;
+            if (!float.IsNaN(Program.Pitch)) View.Camera.Pitch = Program.Pitch;
+            if (!float.IsNaN(Program.Yaw)) View.Camera.Yaw = Program.Yaw;
+            View.Redraw();
         }
 
         void OpenGame(GameFolder g, int mapNumber)
         {
             game = g;
             settings.GameFolder = g.Root;
+            bitmaps?.Dispose();
+            bitmaps = null;
+            string bmpPath = Path.Combine(g.StaticFolder, "bitmap16.flx");
+            if (File.Exists(bmpPath)) bitmaps = FlxArchive.Open(bmpPath);
             maps = g.Maps();
             MapBox.ItemsSource = maps;
             var pick = maps.FirstOrDefault(m => m.Number == mapNumber) ?? maps.FirstOrDefault(m => m.Number == 9) ?? maps.FirstOrDefault();
@@ -87,9 +103,16 @@ namespace U9Editor.App
             var raster = new TerrainRaster(terrain);
             var space = new MapSpace(terrain.Width, terrain.Height) { NorthIsRowZero = settings.NorthIsRowZero };
             View.SetMap(raster, space, MapSpace.WorldY(0) + terrain.WaterHeight / MapSpace.HeightUnitsPerPoint);
+            TerrainTextures textures = null;
+            if (bitmaps != null)
+            {
+                textures = TerrainTextures.Build(raster, i => i < bitmaps.Count ? bitmaps.Read(i) : null);
+                View.SetTextures(textures);
+            }
             View.FrameMap();
             MapInfo.Text = $"{terrain.Width}x{terrain.Height} points, {terrain.Chunks.Count} chunks, water at height {terrain.WaterHeight}, " +
-                           $"waves {terrain.WaveAmplitude}, flags 0x{terrain.Flags:X}";
+                           $"waves {terrain.WaveAmplitude}, flags 0x{terrain.Flags:X}, " +
+                           $"{textures?.Layers.Count ?? 0} texture frames" + (textures?.Missing.Count > 0 ? $" ({textures.Missing.Count} missing)" : "");
             StatusText.Text = "Left drag orbits, middle or Shift+drag pans, wheel zooms, W/A/S/D move, Q/E turn, click selects a point.";
         }
 
@@ -178,8 +201,11 @@ namespace U9Editor.App
         void OnExit(object sender, RoutedEventArgs e) => Close();
 
         void SetColour(ViewState.Colouring c) { View.State.Colour = c; View.Redraw(); }
+        void OnColourTextures(object sender, RoutedEventArgs e) => SetColour(ViewState.Colouring.Textures);
+        void OnUvRotate(object sender, RoutedEventArgs e) { View.State.UvRotate = (View.State.UvRotate + 1) & 3; StatusText.Text = $"Texture quarter turns: {View.State.UvRotate}"; View.Redraw(); }
+        void OnUvFlip(object sender, RoutedEventArgs e) { View.State.UvFlipV = FlipVItem.IsChecked; View.Redraw(); }
         void OnColourHeight(object sender, RoutedEventArgs e) => SetColour(ViewState.Colouring.Height);
-        void OnColourTexture(object sender, RoutedEventArgs e) => SetColour(ViewState.Colouring.Texture);
+        void OnColourTexture(object sender, RoutedEventArgs e) => SetColour(ViewState.Colouring.TextureNumber);
         void OnColourFlags(object sender, RoutedEventArgs e) => SetColour(ViewState.Colouring.Flags);
         void OnToggleWater(object sender, RoutedEventArgs e) { View.State.ShowWater = WaterItem.IsChecked; View.Redraw(); }
         void OnToggleHoles(object sender, RoutedEventArgs e) { View.State.ShowHoles = HolesItem.IsChecked; View.Redraw(); }
