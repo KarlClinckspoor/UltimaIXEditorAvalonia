@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The editor's model: map coordinates, camera, terrain meshing and picking. No UI, no GL. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../U9.Formats/U9.Formats.csproj" />
+  </ItemGroup>
+</Project>

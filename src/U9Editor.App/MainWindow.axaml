@@ -1,0 +1,55 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:U9Editor.App"
+        x:Class="U9Editor.App.MainWindow"
+        Title="U9 Editor" Width="1280" Height="820">
+  <DockPanel>
+    <Menu DockPanel.Dock="Top">
+      <MenuItem Header="_File">
+        <MenuItem Header="_Open game folder…" Click="OnOpenFolder" />
+        <Separator />
+        <MenuItem Header="Save _picture of the view…" Click="OnSavePicture" />
+        <Separator />
+        <MenuItem Header="E_xit" Click="OnExit" />
+      </MenuItem>
+      <MenuItem Header="_View">
+        <MenuItem Header="Colour by _height" Click="OnColourHeight" />
+        <MenuItem Header="Colour by _texture number" Click="OnColourTexture" />
+        <MenuItem Header="Colour by swap/mirror/bit 15 _flags" Click="OnColourFlags" />
+        <Separator />
+        <MenuItem x:Name="WaterItem" Header="_Water" ToggleType="CheckBox" IsChecked="True" Click="OnToggleWater" />
+        <MenuItem x:Name="HolesItem" Header="Show _holes in magenta" ToggleType="CheckBox" Click="OnToggleHoles" />
+        <MenuItem x:Name="GridItem" Header="Tile _grid (16 points)" ToggleType="CheckBox" Click="OnToggleGrid" />
+        <Separator />
+        <MenuItem x:Name="TopDownItem" Header="Top-_down map" ToggleType="CheckBox" InputGesture="Tab" Click="OnToggleTopDown" />
+        <MenuItem Header="_Frame the whole map" InputGesture="Home" Click="OnFrame" />
+        <Separator />
+        <MenuItem x:Name="NorthItem" Header="_North is point row 0 (debug: the game puts north at the last row)" ToggleType="CheckBox" Click="OnToggleNorth" />
+      </MenuItem>
+    </Menu>
+    <Border DockPanel.Dock="Top" Padding="6,4" BorderThickness="0,0,0,1" BorderBrush="#33FFFFFF">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="Map" VerticalAlignment="Center" />
+        <ComboBox x:Name="MapBox" MinWidth="360" SelectionChanged="OnMapChanged" />
+        <TextBlock x:Name="MapInfo" VerticalAlignment="Center" Opacity="0.75" />
+      </StackPanel>
+    </Border>
+    <Border DockPanel.Dock="Bottom" Padding="6,3" BorderThickness="0,1,0,0" BorderBrush="#33FFFFFF">
+      <DockPanel>
+        <TextBlock x:Name="GlText" DockPanel.Dock="Right" Opacity="0.6" />
+        <TextBlock x:Name="StatusText" />
+      </DockPanel>
+    </Border>
+    <Grid>
+      <local:MapView x:Name="View" />
+      <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" Width="56" Height="56"
+              CornerRadius="28" Background="#66000000" IsHitTestVisible="False">
+        <Canvas x:Name="Compass" Width="56" Height="56">
+          <Polygon Points="28,6 23,28 33,28" Fill="#E05050" />
+          <Polygon Points="28,50 23,28 33,28" Fill="#DDDDDD" />
+          <TextBlock Text="N" Canvas.Left="24" Canvas.Top="-16" Foreground="White" FontWeight="Bold" />
+        </Canvas>
+      </Border>
+    </Grid>
+  </DockPanel>
+</Window>

@@ -1,0 +1,281 @@
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using Silk.NET.OpenGL;
+using U9Editor.Core;
+
+namespace U9Editor.Render
+{
+    /// <summary>What the view should show and highlight this frame.</summary>
+    public sealed class ViewState
+    {
+        public enum Colouring { Height = 0, Texture = 1, Flags = 2 }
+        public Colouring Colour = Colouring.Height;
+        public bool ShowWater = true;
+        public bool ShowHoles;
+        public bool TileGrid;
+        public int HoverX = -1, HoverRow = -1;
+        public int SelectedX = -1, SelectedRow = -1;
+    }
+
+    /// <summary>
+    /// Draws a map's terrain with OpenGL 3.3 / GLES 3.0. Knows nothing about the window toolkit: it gets a
+    /// function loader, a framebuffer and a size. Like the UW editor's renderer, data handed over with the
+    /// Set methods is uploaded at the next <see cref="Render"/>, when the context is current.
+    /// <para>The map's raw points go up once as an R32UI texture; one grid of BlockSize x BlockSize quads is
+    /// drawn once per block, and the shaders place, light and colour it from the texture. An edit re-sends
+    /// only the rectangle that changed.</para>
+    /// </summary>
+    public sealed unsafe class TerrainRenderer : IDisposable
+    {
+        public const int BlockSize = 64;
+
+        GL gl;
+        uint terrainProg, waterProg;
+        uint gridVao, gridVbo, gridEbo, waterVao, waterVbo;
+        uint pointsTex;
+        uint gridIndexCount;
+        int texWidth, texHeight;
+        readonly Dictionary<(uint, string), int> uniforms = new Dictionary<(uint, string), int>();
+
+        readonly object gate = new object();
+        TerrainRaster pendingRaster;
+        readonly List<(int X, int Y, int W, int H)> pendingRects = new List<(int, int, int, int)>();
+        TerrainRaster raster;
+        MapSpace space;
+        float waterY;
+
+        public string Info { get; private set; }
+        public string Error { get; private set; }
+
+        public void Init(Func<string, IntPtr> getProc, bool isGles)
+        {
+            gl = GL.GetApi(name => getProc(name));
+            string h = Shaders.Header(isGles);
+            terrainProg = Program(h + Shaders.TerrainVertex, h + Shaders.TerrainFragment);
+            waterProg = Program(h + Shaders.WaterVertex, h + Shaders.WaterFragment);
+            BuildGrid();
+            waterVao = gl.GenVertexArray();
+            waterVbo = gl.GenBuffer();
+            gl.BindVertexArray(waterVao);
+            gl.BindBuffer(BufferTargetARB.ArrayBuffer, waterVbo);
+            gl.EnableVertexAttribArray(0);
+            gl.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, 8, (void*)0);
+            gl.BindVertexArray(0);
+            pointsTex = gl.GenTexture();
+            Info = $"{gl.GetStringS(StringName.Version)} — {gl.GetStringS(StringName.Renderer)}";
+            // a new context starts empty: the map goes up again
+            if (raster != null) lock (gate) pendingRaster ??= raster;
+        }
+
+        void BuildGrid()
+        {
+            int n = BlockSize + 1;
+            var verts = new float[n * n * 2];
+            for (int y = 0, i = 0; y < n; y++)
+                for (int x = 0; x < n; x++) { verts[i++] = x; verts[i++] = y; }
+            var idx = new uint[BlockSize * BlockSize * 6];
+            int k = 0;
+            for (int y = 0; y < BlockSize; y++)
+                for (int x = 0; x < BlockSize; x++)
+                {
+                    uint a = (uint)(x + y * n), b = a + 1, c = a + (uint)n, d = c + 1;
+                    idx[k++] = a; idx[k++] = b; idx[k++] = d;
+                    idx[k++] = a; idx[k++] = d; idx[k++] = c;
+                }
+            gridIndexCount = (uint)idx.Length;
+            gridVao = gl.GenVertexArray();
+            gridVbo = gl.GenBuffer();
+            gridEbo = gl.GenBuffer();
+            gl.BindVertexArray(gridVao);
+            gl.BindBuffer(BufferTargetARB.ArrayBuffer, gridVbo);
+            gl.BufferData<float>(BufferTargetARB.ArrayBuffer, verts, BufferUsageARB.StaticDraw);
+            gl.EnableVertexAttribArray(0);
+            gl.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, 8, (void*)0);
+            gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, gridEbo);
+            gl.BufferData<uint>(BufferTargetARB.ElementArrayBuffer, idx, BufferUsageARB.StaticDraw);
+            gl.BindVertexArray(0);
+        }
+
+        // ---- data, uploaded at the next frame
+
+        /// <summary>Shows a new map (null for none).</summary>
+        public void SetMap(TerrainRaster r, MapSpace s, float waterWorldY)
+        {
+            lock (gate)
+            {
+                raster = r;
+                space = s;
+                waterY = waterWorldY;
+                pendingRaster = r;
+                pendingRects.Clear();
+            }
+        }
+
+        /// <summary>Points in the rectangle changed in the raster: send them again.</summary>
+        public void Invalidate(int x, int row, int w, int h)
+        {
+            lock (gate) pendingRects.Add((x, row, w, h));
+        }
+
+        void Upload()
+        {
+            TerrainRaster full;
+            (int X, int Y, int W, int H)[] rects;
+            lock (gate)
+            {
+                full = pendingRaster;
+                pendingRaster = null;
+                rects = pendingRects.ToArray();
+                pendingRects.Clear();
+            }
+            gl.BindTexture(TextureTarget.Texture2D, pointsTex);
+            gl.PixelStore(PixelStoreParameter.UnpackAlignment, 4);
+            if (full != null && full.Width > 0)
+            {
+                texWidth = full.Width;
+                texHeight = full.Height;
+                gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+                gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+                gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+                gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+                fixed (uint* p = full.Points)
+                    gl.TexImage2D(TextureTarget.Texture2D, 0, InternalFormat.R32ui, (uint)full.Width, (uint)full.Height, 0, PixelFormat.RedInteger, PixelType.UnsignedInt, p);
+                UploadWater(full);
+            }
+            var r = raster;
+            if (r != null && texWidth == r.Width)
+                foreach (var rc in rects)
+                {
+                    int x0 = Math.Max(0, rc.X), y0 = Math.Max(0, rc.Y);
+                    int x1 = Math.Min(r.Width, rc.X + rc.W), y1 = Math.Min(r.Height, rc.Y + rc.H);
+                    if (x1 <= x0 || y1 <= y0) continue;
+                    var sub = new uint[(x1 - x0) * (y1 - y0)];
+                    for (int y = y0; y < y1; y++) Array.Copy(r.Points, x0 + y * r.Width, sub, (y - y0) * (x1 - x0), x1 - x0);
+                    fixed (uint* p = sub)
+                        gl.TexSubImage2D(TextureTarget.Texture2D, 0, x0, y0, (uint)(x1 - x0), (uint)(y1 - y0), PixelFormat.RedInteger, PixelType.UnsignedInt, p);
+                }
+        }
+
+        void UploadWater(TerrainRaster r)
+        {
+            // the water reaches well past the map's edge, as the game's sea does
+            float m = Math.Max(r.Width, r.Height) * 8;
+            float x0 = -m, x1 = r.Width + m, z0 = -m, z1 = r.Height + m;
+            var v = new[] { x0, z0, x1, z0, x1, z1, x0, z0, x1, z1, x0, z1 };
+            gl.BindBuffer(BufferTargetARB.ArrayBuffer, waterVbo);
+            gl.BufferData<float>(BufferTargetARB.ArrayBuffer, v, BufferUsageARB.StaticDraw);
+        }
+
+        public void Render(int framebuffer, int width, int height, OrbitCamera cam, ViewState st)
+        {
+            try
+            {
+                Upload();
+                gl.BindFramebuffer(FramebufferTarget.Framebuffer, (uint)framebuffer);
+                gl.Viewport(0, 0, (uint)Math.Max(1, width), (uint)Math.Max(1, height));
+                gl.ClearColor(0.10f, 0.17f, 0.27f, 1f);
+                gl.ClearDepth(1);
+                gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+                gl.Enable(EnableCap.DepthTest);
+                gl.DepthFunc(DepthFunction.Lequal);
+                gl.DepthMask(true);
+                gl.Disable(EnableCap.CullFace);
+                gl.Disable(EnableCap.Blend);
+
+                var r = raster;
+                var s = space;
+                if (r == null || s == null || texWidth == 0) return;
+                var vp = cam.View * cam.Projection(width / (float)Math.Max(1, height));
+
+                gl.UseProgram(terrainProg);
+                Matrix(terrainProg, "uViewProj", vp);
+                gl.Uniform2(U(terrainProg, "uSize"), r.Width, r.Height);
+                gl.Uniform1(U(terrainProg, "uNorthRow0"), s.NorthIsRowZero ? 1 : 0);
+                gl.Uniform1(U(terrainProg, "uHeightScale"), 1f / MapSpace.HeightUnitsPerPoint);
+                gl.Uniform1(U(terrainProg, "uColourMode"), (int)st.Colour);
+                gl.Uniform1(U(terrainProg, "uWaterY"), waterY);
+                gl.Uniform1(U(terrainProg, "uMaxY"), MapSpace.WorldY(r.MaxHeight));
+                gl.Uniform1(U(terrainProg, "uHoleMode"), st.ShowHoles ? 1 : 0);
+                gl.Uniform1(U(terrainProg, "uTileGrid"), st.TileGrid ? 1 : 0);
+                gl.Uniform2(U(terrainProg, "uHover"), st.HoverX, st.HoverRow);
+                gl.Uniform2(U(terrainProg, "uSelected"), st.SelectedX, st.SelectedRow);
+                gl.ActiveTexture(TextureUnit.Texture0);
+                gl.BindTexture(TextureTarget.Texture2D, pointsTex);
+                gl.Uniform1(U(terrainProg, "uPoints"), 0);
+                gl.BindVertexArray(gridVao);
+                int originLoc = U(terrainProg, "uOrigin");
+                for (int by = 0; by < r.Height - 1; by += BlockSize)
+                    for (int bx = 0; bx < r.Width - 1; bx += BlockSize)
+                    {
+                        gl.Uniform2(originLoc, bx, by);
+                        gl.DrawElements(PrimitiveType.Triangles, gridIndexCount, DrawElementsType.UnsignedInt, (void*)0);
+                    }
+
+                if (st.ShowWater)
+                {
+                    gl.Enable(EnableCap.Blend);
+                    gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+                    gl.DepthMask(false);
+                    gl.UseProgram(waterProg);
+                    Matrix(waterProg, "uViewProj", vp);
+                    gl.Uniform1(U(waterProg, "uWaterY"), waterY);
+                    gl.BindVertexArray(waterVao);
+                    gl.DrawArrays(PrimitiveType.Triangles, 0, 6);
+                    gl.DepthMask(true);
+                    gl.Disable(EnableCap.Blend);
+                }
+                gl.BindVertexArray(0);
+                gl.UseProgram(0);
+                Error = null;
+            }
+            catch (Exception e)
+            {
+                Error = e.Message;
+            }
+        }
+
+        int U(uint prog, string name)
+        {
+            if (!uniforms.TryGetValue((prog, name), out int loc))
+                uniforms[(prog, name)] = loc = gl.GetUniformLocation(prog, name);
+            return loc;
+        }
+
+        void Matrix(uint prog, string name, Matrix4x4 m) => gl.UniformMatrix4(U(prog, name), 1, false, (float*)&m);
+
+        uint Program(string vs, string fs)
+        {
+            uint v = Shader(ShaderType.VertexShader, vs), f = Shader(ShaderType.FragmentShader, fs);
+            uint p = gl.CreateProgram();
+            gl.AttachShader(p, v); gl.AttachShader(p, f);
+            gl.LinkProgram(p);
+            gl.GetProgram(p, ProgramPropertyARB.LinkStatus, out int ok);
+            if (ok == 0) throw new InvalidOperationException("Shader link failed: " + gl.GetProgramInfoLog(p));
+            gl.DeleteShader(v); gl.DeleteShader(f);
+            return p;
+        }
+
+        uint Shader(ShaderType type, string src)
+        {
+            uint s = gl.CreateShader(type);
+            gl.ShaderSource(s, src);
+            gl.CompileShader(s);
+            gl.GetShader(s, ShaderParameterName.CompileStatus, out int ok);
+            if (ok == 0) throw new InvalidOperationException(type + " failed: " + gl.GetShaderInfoLog(s));
+            return s;
+        }
+
+        public void Dispose()
+        {
+            if (gl == null) return;
+            gl.DeleteProgram(terrainProg); gl.DeleteProgram(waterProg);
+            gl.DeleteVertexArray(gridVao); gl.DeleteBuffer(gridVbo); gl.DeleteBuffer(gridEbo);
+            gl.DeleteVertexArray(waterVao); gl.DeleteBuffer(waterVbo);
+            gl.DeleteTexture(pointsTex);
+            uniforms.Clear();
+            texWidth = texHeight = 0;
+            gl = null;
+        }
+    }
+}
