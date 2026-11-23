@@ -19,6 +19,8 @@ namespace U9Editor.Render
         public bool TileGrid;
         public int HoverX = -1, HoverRow = -1;
         public int SelectedX = -1, SelectedRow = -1;
+        public bool ShowFixed = true, ShowNonfixed = true;
+        public int HoverObject = -1, SelectedObject = -1;
     }
 
     /// <summary>
@@ -34,7 +36,12 @@ namespace U9Editor.Render
         public const int BlockSize = 64;
 
         GL gl;
-        uint terrainProg, waterProg;
+        uint terrainProg, waterProg, markerProg;
+        uint markerVao, markerVbo;
+        int markerFixed, markerNonfixed;
+        float[] pendingMarkers;
+        int pendingFixed;
+        bool gles;
         uint gridVao, gridVbo, gridEbo, waterVao, waterVbo;
         uint pointsTex, terrainTex, lookupTex;
         bool haveTextures;
@@ -56,7 +63,19 @@ namespace U9Editor.Render
         public void Init(Func<string, IntPtr> getProc, bool isGles)
         {
             gl = GL.GetApi(name => getProc(name));
+            gles = isGles;
             string h = Shaders.Header(isGles);
+            markerProg = Program(h + Shaders.MarkerVertex, h + Shaders.MarkerFragment);
+            markerVao = gl.GenVertexArray();
+            markerVbo = gl.GenBuffer();
+            gl.BindVertexArray(markerVao);
+            gl.BindBuffer(BufferTargetARB.ArrayBuffer, markerVbo);
+            for (uint i = 0, off = 0; i < 3; off += i == 0 ? 3u : 1u, i++)
+            {
+                gl.EnableVertexAttribArray(i);
+                gl.VertexAttribPointer(i, i == 0 ? 3 : 1, VertexAttribPointerType.Float, false, 20, (void*)(off * 4));
+            }
+            gl.BindVertexArray(0);
             terrainProg = Program(h + Shaders.TerrainVertex, h + Shaders.TerrainFragment);
             waterProg = Program(h + Shaders.WaterVertex, h + Shaders.WaterFragment);
             BuildGrid();
@@ -72,7 +91,7 @@ namespace U9Editor.Render
             lookupTex = gl.GenTexture();
             Info = $"{gl.GetStringS(StringName.Version)} — {gl.GetStringS(StringName.Renderer)}";
             // a new context starts empty: the map goes up again
-            if (raster != null) lock (gate) { pendingRaster ??= raster; pendingTextures ??= textures; }
+            if (raster != null) lock (gate) { pendingRaster ??= raster; pendingTextures ??= textures; pendingMarkers ??= markers; pendingFixed = markersFixed; }
         }
 
         void BuildGrid()
@@ -120,6 +139,28 @@ namespace U9Editor.Render
         }
 
         TerrainTextures textures;
+        float[] markers;
+        int markersFixed;
+
+        /// <summary>The objects to mark: fixed ones first, then nonfixed (null for none).</summary>
+        public void SetObjects(SceneObjects objects)
+        {
+            float[] f = new float[0];
+            int nFixed = 0;
+            if (objects != null)
+            {
+                f = new float[objects.All.Count * 5];
+                int k = 0;
+                foreach (var o in objects.All)
+                {
+                    if (o.Kind == U9.Formats.Objects.ObjectFileKind.Fixed) nFixed++;
+                    f[k++] = o.World.X; f[k++] = o.World.Y; f[k++] = o.World.Z;
+                    f[k++] = o.Kind == U9.Formats.Objects.ObjectFileKind.Fixed ? 0 : 1;
+                    f[k++] = o.Id;
+                }
+            }
+            lock (gate) { markers = f; markersFixed = nFixed; pendingMarkers = f; pendingFixed = nFixed; }
+        }
 
         /// <summary>The terrain textures for the map shown (null for none).</summary>
         public void SetTextures(TerrainTextures t)
@@ -170,6 +211,14 @@ namespace U9Editor.Render
                 pendingRaster = null;
                 tex = pendingTextures;
                 pendingTextures = null;
+                if (pendingMarkers != null)
+                {
+                    gl.BindBuffer(BufferTargetARB.ArrayBuffer, markerVbo);
+                    gl.BufferData<float>(BufferTargetARB.ArrayBuffer, pendingMarkers, BufferUsageARB.StaticDraw);
+                    markerFixed = pendingFixed;
+                    markerNonfixed = pendingMarkers.Length / 5 - pendingFixed;
+                    pendingMarkers = null;
+                }
                 rects = pendingRects.ToArray();
                 pendingRects.Clear();
             }
@@ -266,6 +315,19 @@ namespace U9Editor.Render
                         gl.DrawElements(PrimitiveType.Triangles, gridIndexCount, DrawElementsType.UnsignedInt, (void*)0);
                     }
 
+                if ((st.ShowFixed && markerFixed > 0) || (st.ShowNonfixed && markerNonfixed > 0))
+                {
+                    if (!gles) gl.Enable((EnableCap)0x8642);     // GL_PROGRAM_POINT_SIZE (always on in GLES)
+                    gl.UseProgram(markerProg);
+                    Matrix(markerProg, "uViewProj", vp);
+                    gl.Uniform1(U(markerProg, "uPointScale"), (float)height * 0.6f);
+                    gl.Uniform1(U(markerProg, "uHover"), st.HoverObject);
+                    gl.Uniform1(U(markerProg, "uSelected"), st.SelectedObject);
+                    gl.BindVertexArray(markerVao);
+                    if (st.ShowFixed && markerFixed > 0) gl.DrawArrays(PrimitiveType.Points, 0, (uint)markerFixed);
+                    if (st.ShowNonfixed && markerNonfixed > 0) gl.DrawArrays(PrimitiveType.Points, markerFixed, (uint)markerNonfixed);
+                }
+
                 if (st.ShowWater)
                 {
                     gl.Enable(EnableCap.Blend);
@@ -323,7 +385,9 @@ namespace U9Editor.Render
         public void Dispose()
         {
             if (gl == null) return;
-            gl.DeleteProgram(terrainProg); gl.DeleteProgram(waterProg);
+            gl.DeleteProgram(terrainProg); gl.DeleteProgram(waterProg); gl.DeleteProgram(markerProg);
+            gl.DeleteVertexArray(markerVao); gl.DeleteBuffer(markerVbo);
+            markerFixed = markerNonfixed = 0;
             gl.DeleteVertexArray(gridVao); gl.DeleteBuffer(gridVbo); gl.DeleteBuffer(gridEbo);
             gl.DeleteVertexArray(waterVao); gl.DeleteBuffer(waterVbo);
             gl.DeleteTexture(pointsTex); gl.DeleteTexture(terrainTex); gl.DeleteTexture(lookupTex);

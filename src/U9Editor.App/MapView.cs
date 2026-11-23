@@ -32,6 +32,10 @@ namespace U9Editor.App
         readonly Stopwatch frameClock = new Stopwatch();
 
         public event Action<TerrainHit> Picked;
+        /// <summary>The object under the mouse changed, or one was clicked (null: none).</summary>
+        public event Action<SceneObject> ObjectHovered, ObjectPicked;
+        SceneObjects objects;
+        public SceneObjects Objects => objects;
         public event Action<TerrainHit> Hovered;
         public event Action CameraChanged;
         public event Action FrameDrawn;
@@ -122,6 +126,24 @@ namespace U9Editor.App
             Redraw();
         }
 
+        public void SetObjects(SceneObjects o)
+        {
+            objects = o;
+            State.HoverObject = State.SelectedObject = -1;
+            renderer.SetObjects(o);
+            Redraw();
+        }
+
+        /// <summary>The object marker under a screen point, if any is in front of the terrain.</summary>
+        public SceneObject PickObjectAt(Point p, TerrainHit terrainHit)
+        {
+            if (objects == null) return null;
+            float depth = terrainHit.Hit ? System.Numerics.Vector3.Distance(Camera.Eye, terrainHit.World) : float.PositiveInfinity;
+            var vp = Camera.View * Camera.Projection((float)(Bounds.Width / Math.Max(1, Bounds.Height)));
+            return objects.Pick(vp, Camera.Eye, (float)p.X, (float)p.Y, (float)Bounds.Width, (float)Bounds.Height, 7f, depth,
+                o => o.Kind == U9.Formats.Objects.ObjectFileKind.Fixed ? State.ShowFixed : State.ShowNonfixed);
+        }
+
         public void SetTextures(TerrainTextures t)
         {
             renderer.SetTextures(t);
@@ -202,6 +224,10 @@ namespace U9Editor.App
                 return;
             }
             var hit = PickAt(p);
+            var ob = PickObjectAt(p, hit);
+            int hid = ob?.Id ?? -1;
+            if (hid != State.HoverObject) { State.HoverObject = hid; Redraw(); }
+            ObjectHovered?.Invoke(ob);
             int hx = hit.Hit ? hit.X : -1, hr = hit.Hit ? hit.Row : -1;
             if (hx != State.HoverX || hr != State.HoverRow)
             {
@@ -221,6 +247,9 @@ namespace U9Editor.App
             if (click)
             {
                 var hit = PickAt(at);
+                var ob = PickObjectAt(at, hit);
+                State.SelectedObject = ob?.Id ?? -1;
+                ObjectPicked?.Invoke(ob);
                 State.SelectedX = hit.Hit ? hit.X : -1;
                 State.SelectedRow = hit.Hit ? hit.Row : -1;
                 Redraw();

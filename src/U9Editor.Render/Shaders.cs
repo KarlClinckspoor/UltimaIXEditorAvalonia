@@ -125,6 +125,38 @@ void main()
     fragColour = vec4(col, 1.0);
 }";
 
+        // Object markers: one point per object, sized by distance, round, coloured by file.
+        public const string MarkerVertex = @"
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in float aKind;
+layout(location = 2) in float aId;
+uniform mat4 uViewProj;
+uniform float uPointScale;
+uniform int uHover;
+uniform int uSelected;
+out vec3 vColour;
+void main()
+{
+    gl_Position = uViewProj * vec4(aPos, 1.0);
+    int id = int(aId + 0.5);
+    float size = clamp(uPointScale / gl_Position.w, 3.0, 14.0);
+    vColour = aKind < 0.5 ? vec3(1.0, 0.62, 0.15) : vec3(0.25, 0.9, 1.0);
+    if (id == uHover) { vColour = vec3(1.0); size += 4.0; }
+    if (id == uSelected) { vColour = vec3(1.0, 0.2, 0.9); size += 6.0; }
+    gl_PointSize = size;
+}";
+
+        public const string MarkerFragment = @"
+in vec3 vColour;
+out vec4 fragColour;
+void main()
+{
+    vec2 d = gl_PointCoord - vec2(0.5);
+    float r = dot(d, d);
+    if (r > 0.25) discard;
+    fragColour = vec4(r > 0.16 ? vColour * 0.35 : vColour, 1.0);
+}";
+
         public const string WaterVertex = @"
 layout(location = 0) in vec2 aXZ;
 uniform mat4 uViewProj;

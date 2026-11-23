@@ -12,6 +12,7 @@ using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using U9.Formats.Flx;
+using U9.Formats.Objects;
 using U9.Formats.Terrain;
 using U9Editor.Core;
 using U9Editor.Render;
@@ -23,6 +24,8 @@ namespace U9Editor.App
         readonly Settings settings = Settings.Load();
         GameFolder game;
         FlxArchive bitmaps;
+        TypeNames typeNames;
+        string objectStatus;
         List<MapEntry> maps = new List<MapEntry>();
         TerrainMap terrain;
         MapEntry current;
@@ -33,8 +36,10 @@ namespace U9Editor.App
             InitializeComponent();
             if (Program.Width > 0 && Program.Height > 0) { Width = Program.Width; Height = Program.Height; }
             NorthItem.IsChecked = settings.NorthIsRowZero;
-            View.Hovered += h => StatusText.Text = Describe(h, "");
-            View.Picked += h => StatusText.Text = Describe(h, "selected ");
+            View.Hovered += h => StatusText.Text = objectStatus ?? Describe(h, "");
+            View.Picked += h => StatusText.Text = objectStatus ?? Describe(h, "selected ");
+            View.ObjectHovered += o => objectStatus = o?.ToString();
+            View.ObjectPicked += o => objectStatus = o != null ? "selected " + o : null;
             View.CameraChanged += () => Compass.RenderTransform = new Avalonia.Media.RotateTransform(-View.Camera.Yaw);
             View.FrameDrawn += OnFrameDrawn;
             AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
@@ -75,6 +80,8 @@ namespace U9Editor.App
             bitmaps = null;
             string bmpPath = Path.Combine(g.StaticFolder, "bitmap16.flx");
             if (File.Exists(bmpPath)) bitmaps = FlxArchive.Open(bmpPath);
+            string namesPath = Directory.EnumerateFiles(g.StaticFolder, "typename.flx", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault();
+            typeNames = namesPath != null ? TypeNames.Load(namesPath) : null;
             maps = g.Maps();
             MapBox.ItemsSource = maps;
             var pick = maps.FirstOrDefault(m => m.Number == mapNumber) ?? maps.FirstOrDefault(m => m.Number == 9) ?? maps.FirstOrDefault();
@@ -103,6 +110,7 @@ namespace U9Editor.App
             var raster = new TerrainRaster(terrain);
             var space = new MapSpace(terrain.Width, terrain.Height) { NorthIsRowZero = settings.NorthIsRowZero };
             View.SetMap(raster, space, MapSpace.WorldY(0) + terrain.WaterHeight / MapSpace.HeightUnitsPerPoint);
+            View.SetObjects(LoadObjects(m.Number, space));
             TerrainTextures textures = null;
             if (bitmaps != null)
             {
@@ -112,8 +120,22 @@ namespace U9Editor.App
             View.FrameMap();
             MapInfo.Text = $"{terrain.Width}x{terrain.Height} points, {terrain.Chunks.Count} chunks, water at height {terrain.WaterHeight}, " +
                            $"waves {terrain.WaveAmplitude}, flags 0x{terrain.Flags:X}, " +
-                           $"{textures?.Layers.Count ?? 0} texture frames" + (textures?.Missing.Count > 0 ? $" ({textures.Missing.Count} missing)" : "");
+                           $"{textures?.Layers.Count ?? 0} texture frames, " +
+                           $"{View.Objects?.All.Count(o => o.Kind == ObjectFileKind.Fixed) ?? 0} fixed and {View.Objects?.All.Count(o => o.Kind == ObjectFileKind.Nonfixed) ?? 0} nonfixed objects" + (textures?.Missing.Count > 0 ? $" ({textures.Missing.Count} missing)" : "");
             StatusText.Text = "Left drag orbits, middle or Shift+drag pans, wheel zooms, W/A/S/D move, Q/E turn, click selects a point.";
+        }
+
+        SceneObjects LoadObjects(int number, MapSpace space)
+        {
+            ObjectMap Load(string folder, string name, ObjectFileKind kind)
+            {
+                string dir = Path.Combine(game.Root, folder);
+                string f = Directory.Exists(dir) ? Directory.EnumerateFiles(dir, $"{name}.{number}", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault() : null;
+                if (f == null) return null;
+                try { return ObjectMap.Load(f, kind); }
+                catch (InvalidDataException) { return null; }
+            }
+            return SceneObjects.Build(Load("static", "fixed", ObjectFileKind.Fixed), Load("runtime", "nonfixed", ObjectFileKind.Nonfixed), space, typeNames);
         }
 
         string Describe(TerrainHit h, string prefix)
@@ -207,6 +229,8 @@ namespace U9Editor.App
         void OnColourHeight(object sender, RoutedEventArgs e) => SetColour(ViewState.Colouring.Height);
         void OnColourTexture(object sender, RoutedEventArgs e) => SetColour(ViewState.Colouring.TextureNumber);
         void OnColourFlags(object sender, RoutedEventArgs e) => SetColour(ViewState.Colouring.Flags);
+        void OnToggleFixed(object sender, RoutedEventArgs e) { View.State.ShowFixed = FixedItem.IsChecked; View.Redraw(); }
+        void OnToggleNonfixed(object sender, RoutedEventArgs e) { View.State.ShowNonfixed = NonfixedItem.IsChecked; View.Redraw(); }
         void OnToggleWater(object sender, RoutedEventArgs e) { View.State.ShowWater = WaterItem.IsChecked; View.Redraw(); }
         void OnToggleHoles(object sender, RoutedEventArgs e) { View.State.ShowHoles = HolesItem.IsChecked; View.Redraw(); }
         void OnToggleGrid(object sender, RoutedEventArgs e) { View.State.TileGrid = GridItem.IsChecked; View.Redraw(); }
