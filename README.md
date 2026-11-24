@@ -26,15 +26,15 @@ as in the editor.
 
 ## Status and roadmap
 
-Usable for object, link and terrain editing on any map. Planned work is tracked as
+Usable for object, link, terrain, contents and model editing on any map. Work is tracked as
 [milestones](https://github.com/KarlClinckspoor/UltimaIXEditorAvalonia/milestones):
 
-1. **In-game verification**: confirm terrain painting, blended edges and objects following the ground in the game.
-2. **Multi-select and group editing**: box and Ctrl+click selection; move, turn, copy and delete groups as one undo step.
+1. **In-game verification** (done): confirm terrain painting, blended edges and objects following the ground in the game.
+2. **Multi-select and group editing** (done): box and Ctrl+click selection; move, turn, copy and delete groups as one undo step.
 3. **Prefabs**: copy and paste a group of objects with its ground, also between maps.
-4. **Search and navigation**: find objects by type or name, jump to link destinations, bookmarks.
-5. **Object contents**: book texts, container contents, NPC and object properties.
-6. **New models through Blender**: import and export `sappear.flx` models via glTF.
+4. **Search and navigation** (done): find objects by type or name, jump to link destinations, bookmarks.
+5. **Object contents** (done): book texts, container contents, NPC and object properties.
+6. **New models through Blender** (done): import and export `sappear.flx` models via glTF.
 7. **Cutscene viewer and editor**: play the game's in-engine cutscenes in the 3D view (starting with the first one,
    the camera entering the Avatar's house) and edit their camera moves, timing and actors.
 
