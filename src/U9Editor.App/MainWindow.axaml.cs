@@ -83,6 +83,11 @@ namespace U9Editor.App
             View.SelectionChanged += () => { if (View.Selection.Count > 1) Select(selected); };
             View.FollowTerrain = true;
             View.PlaceAt += OnPlaceAt;
+            ApplyTheme(Program.ThemeAtStart ?? settings.Theme);
+            View.ModeChanged += ShowMode;
+            View.FlyChanged += ShowCamera;
+            View.ObjectsTurning += d => StatusText.Text = $"turning {d:0}°   (let go to keep it, Esc puts it back)";
+            View.ObjectsTurned += OnObjectsTurned;
             View.StrokeEnded += OnStrokeEnded;
             View.StrokeRefused += m => StatusText.Text = m;
             View.BrushSample += OnBrushSample;
@@ -213,7 +218,7 @@ namespace U9Editor.App
             ShowScenes();
             if (lookAfterLoad is { } look) { View.LookAt(look.X, look.Row, 30); lookAfterLoad = null; }
             ShowMapInfo();
-            StatusText.Text = "Click selects, dragging the selection moves it. Drag orbits, Shift+drag pans, wheel zooms, W/A/S/D move.";
+            StatusText.Text = "Click selects; drag orbits, Shift+drag pans, wheel zooms, W/A/S/D move. Tools on the left: 1 Select, 2 Move, 3 Rotate, 4 Place, 5 Terrain; V flies.";
         }
 
         void ShowMapInfo()
@@ -845,6 +850,85 @@ namespace U9Editor.App
             View.Focus();
         }
 
+        // ---- the theme (Look.axaml holds both schemes)
+
+        void ApplyTheme(string name)
+        {
+            bool dark = string.Equals(name, "Dark", StringComparison.OrdinalIgnoreCase);
+            if (Application.Current != null) Application.Current.RequestedThemeVariant = dark ? Avalonia.Styling.ThemeVariant.Dark : Avalonia.Styling.ThemeVariant.Light;
+            ThemeLightItem.IsChecked = !dark;
+            ThemeDarkItem.IsChecked = dark;
+            settings.Theme = dark ? "Dark" : "Light";
+        }
+
+        void OnThemeLight(object sender, RoutedEventArgs e) { ApplyTheme("Light"); settings.Save(); }
+        void OnThemeDark(object sender, RoutedEventArgs e) { ApplyTheme("Dark"); settings.Save(); }
+
+        // ---- the view's modes (the tool bar left of it) and cameras
+
+        void OnModeButton(object sender, RoutedEventArgs e)
+        {
+            if (sender is Control c && Enum.TryParse<ViewMode>(c.Tag as string, out var m)) SetMode(m);
+            ShowMode();
+            View.Focus();
+        }
+
+        void SetMode(ViewMode m)
+        {
+            if (m == ViewMode.Terrain)
+            {
+                if (View.Brush == null) { BrushToggle.IsChecked = true; OnBrushToggle(null, null); }
+                return;
+            }
+            if (View.Brush != null) { BrushToggle.IsChecked = false; OnBrushToggle(null, null); }
+            View.Mode = m;
+            StatusText.Text = m switch
+            {
+                ViewMode.Select => "Select: click selects, Ctrl+drag boxes; drags move the camera only.",
+                ViewMode.Move => "Move: drag the selection to move it.",
+                ViewMode.Rotate => "Rotate: drag sideways on the selection to turn it.",
+                ViewMode.Place => PlaceList.SelectedItem is TypeItem t ? $"Place: click the ground to place {t.Name ?? "type " + t.Type}; again for another. Esc stops." : "Place: pick a type in the Place tab, then click the ground.",
+                _ => StatusText.Text,
+            };
+            if (m == ViewMode.Place) SideTabs.SelectedItem = PlaceTab;
+        }
+
+        void ShowMode()
+        {
+            var m = View.Mode;
+            ModeSelect.IsChecked = m == ViewMode.Select;
+            ModeMove.IsChecked = m == ViewMode.Move;
+            ModeRotate.IsChecked = m == ViewMode.Rotate;
+            ModePlace.IsChecked = m == ViewMode.Place;
+            ModeTerrain.IsChecked = m == ViewMode.Terrain;
+        }
+
+        void OnCameraOrbit(object sender, RoutedEventArgs e) { View.SetFlying(false); ShowCamera(); View.Focus(); }
+        void OnCameraFly(object sender, RoutedEventArgs e)
+        {
+            if (TopDownItem.IsChecked) { TopDownItem.IsChecked = false; OnToggleTopDown(null, null); }
+            View.SetFlying(true);
+            ShowCamera();
+            View.Focus();
+        }
+        void OnToggleFly(object sender, RoutedEventArgs e) { if (View.Flying) OnCameraOrbit(sender, e); else OnCameraFly(sender, e); }
+
+        void ShowCamera()
+        {
+            CamOrbit.IsChecked = !View.Flying;
+            CamFly.IsChecked = FlyItem.IsChecked = View.Flying;
+            StatusText.Text = View.Flying ? "Fly camera: drag to look, W/A/S/D to fly where you look, R/F up and down, wheel steps forward. V goes back to orbiting."
+                                          : "Orbit camera: drag to turn round the point looked at, wheel zooms.";
+        }
+
+        void OnObjectsTurned(IReadOnlyList<SceneObject> list, float degrees)
+        {
+            if (degrees == 0) { View.RefreshEdited(list, false); return; }
+            if (list.Count > 1) Edit(() => editor.TurnGroup(list, degrees));
+            else { var o = list[0]; Edit(() => editor.Rotate(o, MapEditor.Turned(o.Source.Rotation, degrees))); }
+            StatusText.Text = $"Turned {(list.Count > 1 ? list.Count + " objects" : list[0].Name ?? "type " + list[0].Source.Type)} {degrees:0}°. Ctrl+Z takes it back.";
+        }
+
         void OnPlaceAt(TerrainHit hit)
         {
             if (editor == null || PlaceList.SelectedItem is not TypeItem t) return;
@@ -968,6 +1052,11 @@ namespace U9Editor.App
         {
             GlText.Text = (View.GlError != null ? "GL error: " + View.GlError + "   " : "") + $"{View.LastFrameMs:F1} ms";
             ToolTip.SetTip(GlText, View.GlInfo);
+            if (Program.WindowShotPath != null && !screenshotTaken && terrain != null)
+            {
+                screenshotTaken = true;
+                View.TakePicture((w, h, px) => Dispatcher.UIThread.Post(() => { SaveWindowShot(Program.WindowShotPath, w, h, px); Close(); }, DispatcherPriority.Background));
+            }
             if (Program.ScreenshotPath != null && !screenshotTaken && terrain != null)
             {
                 screenshotTaken = true;
@@ -1014,10 +1103,16 @@ namespace U9Editor.App
                     return true;
                 case Key.Escape:
                     if (View.Brush != null) { BrushToggle.IsChecked = false; OnBrushToggle(null, null); }
-                    else if (View.Placing) { View.Placing = false; StatusText.Text = "Not placed."; }
+                    else if (View.Placing) { View.Placing = false; StatusText.Text = "Placing stopped."; }
                     else if (View.IsDraggingObject) { View.CancelDrag(); StatusText.Text = "Put back."; }
                     else View.SelectObject(null);
                     return true;
+                case Key.D1: SetMode(ViewMode.Select); return true;
+                case Key.D2: SetMode(ViewMode.Move); return true;
+                case Key.D3: SetMode(ViewMode.Rotate); return true;
+                case Key.D4: SetMode(ViewMode.Place); return true;
+                case Key.D5: SetMode(ViewMode.Terrain); return true;
+                case Key.V: View.SetFlying(!View.Flying); return true;
                 case Key.Delete: OnDelete(null, null); return true;
                 case Key.End: OnDropToGround(null, null); return true;
                 case Key.OemOpenBrackets when View.Brush != null: BrushRadius.Value = Math.Max(BrushRadius.Minimum, BrushRadius.Value / 1.25); return true;
@@ -1082,8 +1177,10 @@ namespace U9Editor.App
         {
             bool on = BrushToggle.IsChecked == true;
             if (on && editor?.Terrain == null) { BrushToggle.IsChecked = false; StatusText.Text = "No map open."; return; }
-            if (on) { View.SelectObject(null); SideTabs.SelectedIndex = 2; }
+            if (on) { View.SelectObject(null); SideTabs.SelectedItem = TerrainTab; }
             View.Brush = on ? MakeBrush() : null;
+            if (on) View.Mode = ViewMode.Terrain;
+            else if (View.Mode == ViewMode.Terrain) View.Mode = ViewMode.Select;
             StatusText.Text = on ? $"Terrain brush on ({ToolName()}): drag on the ground. B or Esc turns it off." : "Terrain brush off.";
         }
 
@@ -1274,6 +1371,33 @@ namespace U9Editor.App
             });
             string path = f?.TryGetLocalPath();
             if (path != null) View.TakePicture((w, h, px) => { SavePng(path, w, h, px); StatusText.Text = "Saved " + path; });
+        }
+
+        /// <summary>The whole window as a PNG: its controls rendered off screen, the 3D frame drawn where the view is.</summary>
+        void SaveWindowShot(string path, int w, int h, byte[] px)
+        {
+            double scale = RenderScaling;
+            var size = new PixelSize((int)(Bounds.Width * scale), (int)(Bounds.Height * scale));
+            using var rtb = new RenderTargetBitmap(size, new Vector(96 * scale, 96 * scale));
+            rtb.Render(this);
+            if (px != null)
+            {
+                using var frame = new WriteableBitmap(new PixelSize(w, h), new Vector(96, 96), PixelFormat.Rgba8888, AlphaFormat.Opaque);
+                using (var fb = frame.Lock())
+                {
+                    var row = new byte[w * 4];
+                    for (int y = 0; y < h; y++)
+                    {
+                        Array.Copy(px, (h - 1 - y) * w * 4, row, 0, row.Length);
+                        for (int i = 3; i < row.Length; i += 4) row[i] = 255;
+                        Marshal.Copy(row, 0, fb.Address + y * fb.RowBytes, row.Length);
+                    }
+                }
+                var at = View.TranslatePoint(new Point(0, 0), this) ?? new Point(0, 0);
+                using var ctx = rtb.CreateDrawingContext(false);
+                ctx.DrawImage(frame, new Rect(0, 0, w, h), new Rect(at, View.Bounds.Size));
+            }
+            rtb.Save(path);
         }
 
         void SavePng(string path, int w, int h, byte[] px)

@@ -1,8 +1,10 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="U9Editor.App.App"
-             RequestedThemeVariant="Dark">
+             RequestedThemeVariant="Light">
   <Application.Styles>
     <FluentTheme />
+    <!-- the classic, compact look with its Light and Dark schemes -->
+    <StyleInclude Source="/Look.axaml" />
   </Application.Styles>
 </Application>

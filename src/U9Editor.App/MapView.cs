@@ -13,13 +13,28 @@ using U9Editor.Render;
 
 namespace U9Editor.App
 {
+    /// <summary>What a left drag in the view does (the tool bar beside it).</summary>
+    public enum ViewMode
+    {
+        /// <summary>Click selects, drags only move the camera: nothing is edited.</summary>
+        Select,
+        /// <summary>A drag on the selection moves it.</summary>
+        Move,
+        /// <summary>A sideways drag on the selection turns it (a group about its middle).</summary>
+        Rotate,
+        /// <summary>Each click on the ground places the type picked in the Place tab.</summary>
+        Place,
+        /// <summary>Drags paint with the terrain brush.</summary>
+        Terrain,
+    }
+
     /// <summary>
     /// The 3D view, after the UW editor's LevelView: hosts <see cref="TerrainRenderer"/> in Avalonia's OpenGL
     /// control and turns mouse and keys into camera moves and picks. It draws only when something changed.
-    /// Mouse: left click selects, Ctrl+click adds or takes away an object, Ctrl+left drag selects the objects in a box,
-    /// left drag on a selected object moves the selection, other left or right drags orbit, middle or Shift+left drag
-    /// pans, wheel zooms.
-    /// Keys: W/A/S/D or arrows move, Q/E turn, R/F raise and lower the point looked at, +/- zoom, Home frames the map.
+    /// Mouse: left click selects, Ctrl+click adds or takes away an object, Ctrl+left drag selects the objects in a box;
+    /// in Move mode a left drag on the selection moves it, in Rotate mode turns it; other left or right drags orbit
+    /// (or look round, flying), middle or Shift+left drag pans, wheel zooms (flying: moves forward).
+    /// Keys: W/A/S/D or arrows move, Q/E turn, R/F raise and lower, +/- zoom, Home frames the map.
     /// </summary>
     public sealed class MapView : OpenGlControlBase, Avalonia.Rendering.ICustomHitTest
     {
@@ -178,7 +193,31 @@ namespace U9Editor.App
         // ---- editing
 
         /// <summary>The next click on the ground places an object (<see cref="PlaceAt"/>) instead of selecting.</summary>
-        public bool Placing { get; set; }
+        ViewMode mode;
+        /// <summary>What a left drag does; Terrain needs <see cref="Brush"/> set as well.</summary>
+        public ViewMode Mode
+        {
+            get => mode;
+            set { if (mode == value) return; if (IsDraggingObject) CancelDrag(); mode = value; ModeChanged?.Invoke(); }
+        }
+        public event Action ModeChanged;
+        /// <summary>Place mode: clicks on the ground place objects.</summary>
+        public bool Placing { get => mode == ViewMode.Place; set => Mode = value ? ViewMode.Place : ViewMode.Select; }
+
+        // ---- flying: the camera's eye moves, drags look round it
+
+        /// <summary>The fly camera: W/A/S/D move the eye where it looks (R/F up and down), drags look round, the wheel steps forward.</summary>
+        public bool Flying => Camera.Fly;
+        public event Action FlyChanged;
+
+        public void SetFlying(bool on)
+        {
+            if (on == Camera.Fly) return;
+            if (on && Camera.Orthographic) return;
+            Camera.SetFly(on);
+            FlyChanged?.Invoke();
+            CameraMoved();
+        }
         public event Action<TerrainHit> PlaceAt;
 
         // ---- terrain brush
@@ -388,6 +427,36 @@ namespace U9Editor.App
 
         public bool IsDraggingObject => dragObject != null && dragging;
 
+        /// <summary>Points a second the fly camera moves: brisk over open land, slower near the ground.</summary>
+        float FlySpeed()
+        {
+            float above = raster != null ? Camera.Eye.Y - MapSpace.WorldY(raster.HeightAt(Math.Clamp((int)Camera.Eye.X, 0, space.Width - 1), Math.Clamp((int)space.Row(Camera.Eye.Z), 0, space.Height - 1))) : 10;
+            return Math.Clamp(above * 1.5f, 3f, 60f);
+        }
+
+        // ---- Rotate mode: a sideways drag turns the selection
+
+        bool rotating;
+        float turnDegrees;
+        /// <summary>Rotate mode let go: the objects and the turn (degrees counter-clockwise seen from above).</summary>
+        public event Action<IReadOnlyList<SceneObject>, float> ObjectsTurned;
+        public event Action<float> ObjectsTurning;
+
+        void TurnPreview(Point p)
+        {
+            turnDegrees = MathF.Round(-(float)(p.X - pressAt.X) * 0.5f);
+            var list = dragGroup ?? new List<SceneObject> { dragObject };
+            var (cx, cy) = MapEditor.GroupCentre(list);
+            float a = turnDegrees * MathF.PI / 180f, c = MathF.Cos(a), s = MathF.Sin(a);
+            foreach (var o in list)
+            {
+                float rx = o.Source.MapX - cx, ry = o.Source.MapY - cy;
+                float x = list.Count == 1 ? o.Source.MapX : cx + rx * c - ry * s, y = list.Count == 1 ? o.Source.MapY : cy + rx * s + ry * c;
+                Preview(o, x, y, o.Source.Z, MapEditor.Turned(o.Source.Rotation, turnDegrees));
+            }
+            ObjectsTurning?.Invoke(turnDegrees);
+        }
+
         public void SetTextures(TerrainTextures t)
         {
             renderer.SetTextures(t);
@@ -405,6 +474,7 @@ namespace U9Editor.App
         public void FrameMap()
         {
             if (raster == null) return;
+            SetFlying(false);
             Camera.Target = space.Centre(MapSpace.WorldY(raster.HeightAt(raster.Width / 2, raster.Height / 2)));
             Camera.Yaw = 0;
             float size = Math.Max(raster.Width, raster.Height);
@@ -417,6 +487,7 @@ namespace U9Editor.App
         public void LookAt(double x, double row, float distance)
         {
             if (raster == null) return;
+            SetFlying(false);
             Camera.Target = new System.Numerics.Vector3((float)x, MapSpace.WorldY(raster.HeightAt((int)x, (int)row)), space.WorldZ((float)row));
             Camera.Distance = distance;
             CameraMoved();
@@ -521,6 +592,7 @@ namespace U9Editor.App
 
         public void SetTopDown(bool on)
         {
+            SetFlying(false);
             Camera.Orthographic = on;
             if (on) { Camera.Pitch = 89; Camera.Yaw = 0; }
             else Camera.Pitch = 55;
@@ -564,7 +636,8 @@ namespace U9Editor.App
             boxing = false;
             if (leftDown && !panning && brush != null) StartStroke(pressAt);
             else if (leftDown && !panning && !Placing && (e.KeyModifiers & KeyModifiers.Control) != 0) boxing = true;
-            else if (leftDown && !panning) StartObjectDrag(pressAt);
+            else if (leftDown && !panning && mode == ViewMode.Move) StartObjectDrag(pressAt);
+            else if (leftDown && !panning && mode == ViewMode.Rotate) { StartObjectDrag(pressAt); rotating = dragObject != null; }
             e.Pointer.Capture(this);
             e.Handled = true;
         }
@@ -584,7 +657,7 @@ namespace U9Editor.App
                 }
                 if (dragging && dragObject != null)
                 {
-                    DragObjectTo(p);
+                    if (rotating) TurnPreview(p); else DragObjectTo(p);
                     return;
                 }
                 if (boxing)
@@ -594,7 +667,8 @@ namespace U9Editor.App
                 }
                 if (dragging)
                 {
-                    if (panning || Camera.Orthographic) Camera.Pan((float)d.X, (float)d.Y, (float)Bounds.Height);
+                    if (panning && Camera.Fly) Camera.FlyMove(0, -(float)d.X * 0.04f, (float)d.Y * 0.04f);
+                    else if (panning || Camera.Orthographic) Camera.Pan((float)d.X, (float)d.Y, (float)Bounds.Height);
                     else Camera.Orbit((float)d.X * 0.35f, (float)d.Y * 0.3f);
                     lastAt = p;
                     CameraMoved();
@@ -637,6 +711,8 @@ namespace U9Editor.App
             var at = e.GetPosition(this);
             var dropped = dragging ? dragObject : null;
             var droppedGroup = dragGroup;
+            bool turned = rotating && dropped != null;
+            rotating = false;
             bool boxed = boxing && dragging;
             bool ctrlClick = boxing && click;
             anyDown = dragging = panning = leftDown = boxing = false;
@@ -660,6 +736,11 @@ namespace U9Editor.App
                 if (ob != null) ToggleInSelection(ob);
                 return;
             }
+            if (turned)
+            {
+                ObjectsTurned?.Invoke(droppedGroup ?? new List<SceneObject> { dropped }, turnDegrees);
+                return;
+            }
             if (dropped != null)
             {
                 if (droppedGroup != null) GroupDragged?.Invoke(droppedGroup, dragX - dropped.Source.MapX, dragY - dropped.Source.MapY);
@@ -669,7 +750,7 @@ namespace U9Editor.App
             if (click && Placing)
             {
                 var ph = PickAt(at);
-                if (ph.Hit) { Placing = false; PlaceAt?.Invoke(ph); }
+                if (ph.Hit) PlaceAt?.Invoke(ph);       // the mode stays: click again to place another
                 return;
             }
             if (click)
@@ -690,6 +771,7 @@ namespace U9Editor.App
             if (dragObject != null && dragging) CancelDrag();
             dragObject = null;
             dragGroup = null;
+            rotating = false;
             if (boxing) { boxing = false; BoxChanged?.Invoke(null); }
             anyDown = dragging = panning = leftDown = false;
         }
@@ -710,7 +792,8 @@ namespace U9Editor.App
         {
             base.OnPointerWheelChanged(e);
             e.Handled = true;
-            Camera.Zoom((float)Math.Pow(0.88, e.Delta.Y));
+            if (Camera.Fly) Camera.FlyMove((float)e.Delta.Y * FlySpeed() * 0.25f, 0, 0);
+            else Camera.Zoom((float)Math.Pow(0.88, e.Delta.Y));
             CameraMoved();
         }
 
@@ -779,6 +862,14 @@ namespace U9Editor.App
             if (held.Contains(Key.Q)) turn -= 1;
             if (held.Contains(Key.R)) up += 1;
             if (held.Contains(Key.F)) up -= 1;
+            if (Camera.Fly)
+            {
+                float fs = FlySpeed() * (shiftHeld ? 3f : 1f) * dt;
+                Camera.FlyMove(fwd * fs, right * fs, up * fs);
+                if (turn != 0) Camera.Orbit(turn * 110f * dt, 0);
+                CameraMoved();
+                return;
+            }
             Camera.Move(fwd * speed, right * speed);
             Camera.Target += new Vector3(0, up * speed * 0.5f, 0);
             if (turn != 0) Camera.Orbit(turn * 110f * dt, 0);

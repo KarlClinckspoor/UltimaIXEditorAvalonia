@@ -11,6 +11,8 @@ namespace U9Editor.App
         public string GameFolder { get; set; }
         public int LastMap { get; set; } = 9;
         public bool NorthIsRowZero { get; set; }
+        /// <summary>View > Theme: "Light" (the default) or "Dark".</summary>
+        public string Theme { get; set; } = "Light";
         /// <summary>Named places; null until first used, then filled with a few starting ones.</summary>
         public List<Bookmark> Bookmarks { get; set; }
 

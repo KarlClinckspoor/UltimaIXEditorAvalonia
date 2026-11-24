@@ -46,6 +46,7 @@
         <MenuItem x:Name="HolesItem" Header="Show _holes in magenta" ToggleType="CheckBox" Click="OnToggleHoles" />
         <MenuItem x:Name="GridItem" Header="Tile _grid (16 points)" ToggleType="CheckBox" Click="OnToggleGrid" />
         <Separator />
+        <MenuItem x:Name="FlyItem" Header="_Fly camera" ToggleType="CheckBox" InputGesture="V" Click="OnToggleFly" />
         <MenuItem x:Name="TopDownItem" Header="Top-_down map" ToggleType="CheckBox" InputGesture="Tab" Click="OnToggleTopDown" />
         <MenuItem Header="_Frame the whole map" InputGesture="Home" Click="OnFrame" />
         <Separator />
@@ -53,24 +54,28 @@
           <MenuItem Header="Turn every quad's texture a quarter" Click="OnUvRotate" />
           <MenuItem x:Name="FlipVItem" Header="Texture rows the other way" ToggleType="CheckBox" Click="OnUvFlip" />
         </MenuItem>
+        <MenuItem Header="T_heme">
+          <MenuItem x:Name="ThemeLightItem" Header="_Light" ToggleType="Radio" GroupName="theme" IsChecked="True" Click="OnThemeLight" />
+          <MenuItem x:Name="ThemeDarkItem" Header="_Dark" ToggleType="Radio" GroupName="theme" Click="OnThemeDark" />
+        </MenuItem>
         <MenuItem x:Name="NorthItem" Header="_North is point row 0 (debug: the game puts north at the last row)" ToggleType="CheckBox" Click="OnToggleNorth" />
       </MenuItem>
     </Menu>
-    <Border DockPanel.Dock="Top" Padding="6,4" BorderThickness="0,0,0,1" BorderBrush="#33FFFFFF">
+    <Border DockPanel.Dock="Top" Padding="6,3" BorderThickness="0,0,0,1" Classes="bar">
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBlock Text="Map" VerticalAlignment="Center" />
         <ComboBox x:Name="MapBox" MinWidth="360" SelectionChanged="OnMapChanged" />
         <TextBlock x:Name="MapInfo" VerticalAlignment="Center" Opacity="0.75" />
       </StackPanel>
     </Border>
-    <Border DockPanel.Dock="Bottom" Padding="6,3" BorderThickness="0,1,0,0" BorderBrush="#33FFFFFF">
+    <Border DockPanel.Dock="Bottom" Padding="6,2" BorderThickness="0,1,0,0" Classes="bar">
       <DockPanel>
         <TextBlock x:Name="GlText" DockPanel.Dock="Right" Opacity="0.6" Margin="12,0,0,0" />
-        <TextBlock x:Name="StatusText" DockPanel.Dock="Left" Foreground="#FFE0A0" Margin="0,0,16,0" MaxWidth="700" TextTrimming="CharacterEllipsis" />
+        <TextBlock x:Name="StatusText" DockPanel.Dock="Left" Classes="status" Margin="0,0,16,0" MaxWidth="700" TextTrimming="CharacterEllipsis" />
         <TextBlock x:Name="HoverText" TextTrimming="CharacterEllipsis" />
       </DockPanel>
     </Border>
-    <Border DockPanel.Dock="Right" Width="380" BorderThickness="1,0,0,0" BorderBrush="#33FFFFFF" Padding="6">
+    <Border DockPanel.Dock="Right" Width="380" BorderThickness="1,0,0,0" Classes="side" Padding="5">
       <DockPanel>
         <StackPanel x:Name="ObjectPanel" DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,12" KeyDown="OnObjectPanelKey">
           <TextBlock Text="Selected object" FontWeight="SemiBold" />
@@ -127,7 +132,7 @@
               <ListBox x:Name="LinksList" FontSize="12" SelectionChanged="OnLinkSelected" DoubleTapped="OnLinkGo" />
             </DockPanel>
           </TabItem>
-          <TabItem Header="Place" FontSize="13" ToolTip.Tip="Place a new object of any type">
+          <TabItem x:Name="PlaceTab" Header="Place" FontSize="13" ToolTip.Tip="Place a new object of any type">
             <DockPanel>
               <TextBox x:Name="PlaceSearch" DockPanel.Dock="Top" Watermark="Search types by name or number" FontSize="12" TextChanged="OnPlaceSearch" Margin="0,0,0,4" />
               <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,6,0,0">
@@ -241,7 +246,7 @@
               <ListBox x:Name="ShotsList" FontSize="12" SelectionChanged="OnShotSelected" />
             </DockPanel>
           </TabItem>
-          <TabItem Header="Terrain" FontSize="13">
+          <TabItem x:Name="TerrainTab" Header="Terrain" FontSize="13">
             <StackPanel Spacing="6" x:Name="TerrainPanel">
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <ToggleButton x:Name="BrushToggle" Content="Brush" Click="OnBrushToggle" ToolTip.Tip="B toggles it. While on, a left drag on the ground edits the terrain; right drag orbits, Shift+drag pans." />
@@ -306,6 +311,45 @@
           </TabItem>
         </TabControl>
       </DockPanel>
+    </Border>
+    <Border DockPanel.Dock="Left" Classes="toolbox">
+      <StackPanel Spacing="2">
+        <ToggleButton x:Name="ModeSelect" Classes="tool" Tag="Select" Click="OnModeButton" IsChecked="True"
+                      ToolTip.Tip="Select (1): click selects, Ctrl+click adds or takes away, Ctrl+drag selects a box. Drags only move the camera: nothing is edited.">
+          <Path Classes="solid" Data="M5,2 L5,17 L9,13.5 L12,19.5 L14.5,18.3 L11.6,12.5 L16.5,12.5 Z" />
+        </ToggleButton>
+        <ToggleButton x:Name="ModeMove" Classes="tool" Tag="Move" Click="OnModeButton"
+                      ToolTip.Tip="Move (2): drag the selection to move it (it keeps its height above the ground; Esc puts it back).">
+          <Path Classes="solid" Data="M10,1 L13.5,4.5 L11,4.5 L11,9 L15.5,9 L15.5,6.5 L19,10 L15.5,13.5 L15.5,11 L11,11 L11,15.5 L13.5,15.5 L10,19 L6.5,15.5 L9,15.5 L9,11 L4.5,11 L4.5,13.5 L1,10 L4.5,6.5 L4.5,9 L9,9 L9,4.5 L6.5,4.5 Z" />
+        </ToggleButton>
+        <ToggleButton x:Name="ModeRotate" Classes="tool" Tag="Rotate" Click="OnModeButton"
+                      ToolTip.Tip="Rotate (3): drag sideways on the selection to turn it, half a degree a pixel (a group turns about its middle).">
+          <Grid>
+            <Path Classes="line" StrokeThickness="2" Data="M16,10.5 A6,6 0 1 1 10,4.5" />
+            <Path Classes="solid" Data="M9,1 L14,4.5 L9,8 Z" />
+          </Grid>
+        </ToggleButton>
+        <ToggleButton x:Name="ModePlace" Classes="tool" Tag="Place" Click="OnModeButton"
+                      ToolTip.Tip="Place (4): each click on the ground places the type picked in the Place tab. Esc stops.">
+          <Path Classes="solid" Data="M8.5,3 L11.5,3 L11.5,8.5 L17,8.5 L17,11.5 L11.5,11.5 L11.5,17 L8.5,17 L8.5,11.5 L3,11.5 L3,8.5 L8.5,8.5 Z" />
+        </ToggleButton>
+        <ToggleButton x:Name="ModeTerrain" Classes="tool" Tag="Terrain" Click="OnModeButton"
+                      ToolTip.Tip="Terrain (5 or B): drags edit the ground with the brush set in the Terrain tab. Esc stops.">
+          <Path Classes="solid" Data="M1,17 L7,6 L10,10.5 L13,5.5 L19,17 Z" />
+        </ToggleButton>
+        <Separator Margin="0,4" />
+        <ToggleButton x:Name="CamOrbit" Classes="tool" Click="OnCameraOrbit" IsChecked="True"
+                      ToolTip.Tip="Orbit camera (V switches): drags turn round the point looked at, the wheel zooms, W/A/S/D move over the ground.">
+          <Grid>
+            <Path Classes="line" StrokeThickness="1.6" Data="M1.5,10 A8.5,4 0 1 1 18.5,10 A8.5,4 0 1 1 1.5,10" />
+            <Path Classes="solid" Data="M7,10 A3,3 0 1 1 13,10 A3,3 0 1 1 7,10" />
+          </Grid>
+        </ToggleButton>
+        <ToggleButton x:Name="CamFly" Classes="tool" Click="OnCameraFly"
+                      ToolTip.Tip="Fly camera (V switches): drags look round, W/A/S/D fly where you look, R/F up and down, Q/E turn, the wheel steps forward; Shift is faster.">
+          <Path Classes="solid" Data="M1,9.5 L19,2 L12.5,18 L9.5,11.5 Z" />
+        </ToggleButton>
+      </StackPanel>
     </Border>
     <Grid>
       <local:MapView x:Name="View" />

@@ -15,6 +15,10 @@ namespace U9Editor.App
         public static bool TopDownAtStart;
         /// <summary>--screenshot PATH: save the first drawn frame as a PNG, then quit (for scripted checks).</summary>
         public static string ScreenshotPath;
+        /// <summary>--window-shot PATH: save the whole window (panels and the 3D frame) as a PNG, then quit.</summary>
+        public static string WindowShotPath;
+        /// <summary>--theme Light|Dark: the theme for this run (not remembered).</summary>
+        public static string ThemeAtStart;
         /// <summary>--look X,ROW --distance D --pitch P --yaw Y: where the camera starts (point coordinates, world units, degrees).</summary>
         public static float LookX = float.NaN, LookRow = float.NaN, Distance = float.NaN, Pitch = float.NaN, Yaw = float.NaN;
         /// <summary>--scene N --scene-time S: start with the view of the map's scene N (as the Scenes tab lists them, from 0) at S seconds.</summary>
@@ -31,6 +35,8 @@ namespace U9Editor.App
                 else if (a == "--map" && i + 1 < args.Length) int.TryParse(args[++i], out MapAtStart);
                 else if (a == "--top-down") TopDownAtStart = true;
                 else if (a == "--screenshot" && i + 1 < args.Length) ScreenshotPath = args[++i];
+                else if (a == "--window-shot" && i + 1 < args.Length) WindowShotPath = args[++i];
+                else if (a == "--theme" && i + 1 < args.Length) ThemeAtStart = args[++i];
                 else if (a == "--look" && i + 1 < args.Length)
                 {
                     var xy = args[++i].Split(',');

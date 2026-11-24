@@ -87,9 +87,51 @@ namespace U9Editor.Core
 
         public void Orbit(float dYaw, float dPitch)
         {
+            if (Fly)
+            {
+                // looking round: the eye stays where it is
+                var eye = Eye;
+                Yaw = (Yaw + dYaw) % 360;
+                if (Yaw < 0) Yaw += 360;
+                Pitch = Math.Clamp(Pitch + dPitch, -89, 89);
+                Target = eye + Forward * Distance;
+                return;
+            }
             Yaw = (Yaw + dYaw) % 360;
             if (Yaw < 0) Yaw += 360;
             Pitch = Math.Clamp(Pitch + dPitch, MinPitch, 89);
+        }
+
+        /// <summary>The fly camera: the eye moves and the view turns round it (the target sits just in front of it).</summary>
+        public bool Fly { get; private set; }
+        public const float FlyLead = 0.05f;
+        float orbitDistance = 30;
+
+        /// <summary>Starts or stops flying, keeping the eye and the view where they are.</summary>
+        public void SetFly(bool on)
+        {
+            if (on == Fly) return;
+            var eye = Eye;
+            if (on)
+            {
+                orbitDistance = Distance;
+                Fly = true;
+                Distance = FlyLead;
+                Target = eye + Forward * Distance;
+            }
+            else
+            {
+                Fly = false;
+                Distance = Math.Clamp(orbitDistance, MinDistance, MaxDistance);
+                Pitch = Math.Clamp(Pitch, MinPitch, 89);
+                Target = eye + Forward * Distance;
+            }
+        }
+
+        /// <summary>Flying: moves the eye along where it looks, to its right and straight up (point spacings).</summary>
+        public void FlyMove(float forward, float right, float up)
+        {
+            Target += Forward * forward + Right * right + Vector3.UnitY * up;
         }
 
         public void Zoom(float factor) => Distance = Math.Clamp(Distance * factor, MinDistance, MaxDistance);
