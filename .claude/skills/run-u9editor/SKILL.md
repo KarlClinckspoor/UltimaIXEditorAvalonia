@@ -122,7 +122,11 @@ powershell -ExecutionPolicy Bypass -File $g log 15           # console output is
 
 Checked that way: a link made with the editor (the cave at 573, 262.4 on Britannia retargeted to a new arrival
 at the bridge, saved) works in the game. `tppos` into the zone sent the Avatar to the arrival, 59779,64640 for
-59776,64640. Zones can sit well below the ground you see (that one at z 2137 under ground at 2710): teleport
+59776,64640. Terrain at Moonglow (around 744, 396 on Britannia: start at 738, 382,
+then 	ppos 9 95360 50432 3300 puts the camera over the hill) checked the same way: objects that followed a raised hill
+sit on it, painted sand blends into grass. A console command typed while the console is closed after a teleport
+needs Ctrl+ first; if log shows no >  line for it, the console was closed: open it and type again.
+Zones can sit well below the ground you see (that one at z 2137 under ground at 2710): teleport
 into them with an explicit z rather than walking. Read the position with `pos` before and after.
 
 - The game draws in U9GL's own 1280 x 960 window at 0,0. Desktop captures of it come out white or black: use

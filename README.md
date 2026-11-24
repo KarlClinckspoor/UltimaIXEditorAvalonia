@@ -20,8 +20,9 @@ It reads and writes the game's own files, so changes show up in the real game.
   for byte-identical round trips over every shipped file.
 - Saving keeps each original file beside it as `.orig` the first time.
 
-Checked in the game: a retargeted cave link takes the Avatar to the new arrival, and a raised hill puts him on
-its top at the height the editor reckons.
+Checked in the game: a retargeted cave link takes the Avatar to the new arrival, a raised hill puts him on
+its top at the height the editor reckons, objects that followed the ground sit on it, and painted textures blend
+as in the editor.
 
 ## Status and roadmap
 
@@ -188,7 +189,10 @@ Agents drive the running editor with `.claude/skills/run-u9editor/driver.ps1` (s
   are within 16 object units of the ground and 698 within 64; plants and the pools' stones sit 45-61 below.
 - In the game (patched U9GL, `tools/game-test.ps1`): a link retargeted and saved by the editor takes the Avatar
   to the new arrival (59779,64640 for 59776,64640), and a hill raised and saved puts him on its top at the height
-  the editor reckons (z 3626 for 3628).
+  the editor reckons (z 3626 for 3628). At Moonglow (Britannia, around point 744, 396) a hill raised with
+  objects following, and sand painted with blended edges, look in the game as in the editor: the mushrooms,
+  rocks and bushes that followed sit on the new slope, and the sand blends into grass (into rock, which has no
+  transition set with sand, the edge stays hard, as the editor shows it).
 
 ## License
 
