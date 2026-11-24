@@ -209,7 +209,7 @@ namespace U9Editor.App
 
         SceneObjects LoadObjects(int number, MapSpace space, TerrainRaster raster)
         {
-            if (editor != null) { editor.Changed -= OnObjectsChanged; editor.TerrainEdited -= OnTerrainEdited; }
+            if (editor != null) { editor.Changed -= OnObjectsChanged; editor.TerrainEdited -= OnTerrainEdited; editor.WaterEdited -= OnWaterEdited; }
             // a map with edits keeps them while other maps are looked at
             if (editors.TryGetValue(number, out var kept))
             {
@@ -229,6 +229,8 @@ namespace U9Editor.App
             editor.Terrain = terrain;
             editor.TerrainPath = current?.TerrainPath;
             editor.TerrainEdited += OnTerrainEdited;
+            editor.WaterEdited += OnWaterEdited;
+            WaterHeight.Text = (terrain.WaterLevel / 4f).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
             View.Editor = editor;       // without it the view cannot start a drag
             currentNonfixed = editor.Nonfixed;
             return editor.Objects;
@@ -692,6 +694,31 @@ namespace U9Editor.App
         // ---- terrain
 
         void OnTerrainEdited(int x, int row, int w, int h) => View.InvalidatePoints(x, row, w, h);
+
+        void OnWaterEdited(int stored)
+        {
+            View.SetWater(MapSpace.WorldY(0) + stored / 4f / MapSpace.HeightUnitsPerPoint);
+            WaterHeight.Text = (stored / 4f).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+            editors[editor.MapNumber] = editor;
+            UpdateTitle();
+        }
+
+        void OnSetWater(object sender, RoutedEventArgs e)
+        {
+            if (editor?.Terrain == null) return;
+            if (!float.TryParse(WaterHeight.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float h) || h < -1000 || h > 5000)
+            {
+                StatusText.Text = "Water height: a number of point heights (Britannia's sea is at 506).";
+                return;
+            }
+            editor.SetWaterHeight(h);
+            StatusText.Text = $"Water level {h:0.##} (Ctrl+Z takes it back).";
+        }
+
+        void OnWaterKey(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter) { OnSetWater(null, null); e.Handled = true; }
+        }
 
         void OnBrushToggle(object sender, RoutedEventArgs e)
         {

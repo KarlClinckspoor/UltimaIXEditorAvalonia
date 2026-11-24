@@ -127,6 +127,12 @@ namespace U9Editor.App
             Redraw();
         }
 
+        public void SetWater(float waterWorldY)
+        {
+            renderer.SetWater(waterWorldY);
+            Redraw();
+        }
+
         public void SetObjects(SceneObjects o)
         {
             objects = o;

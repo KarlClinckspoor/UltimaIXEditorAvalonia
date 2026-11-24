@@ -171,6 +171,11 @@
                 <CheckBox x:Name="BrushTurn" Content="Random quarter turns" IsChecked="True" FontSize="12" Click="OnBrushChanged" Margin="0,0,8,0" />
                 <CheckBox x:Name="BrushFollow" Content="Objects follow the ground" IsChecked="True" FontSize="12" Click="OnBrushChanged" />
               </WrapPanel>
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="Water height" VerticalAlignment="Center" FontSize="12" />
+                <TextBox x:Name="WaterHeight" Width="70" FontSize="12" KeyDown="OnWaterKey" />
+                <Button Content="Set" Click="OnSetWater" FontSize="12" ToolTip.Tip="The map's sea level, in point heights as the status bar shows them (Enter does the same)" />
+              </StackPanel>
               <ListBox x:Name="TexturePalette" MaxHeight="132" SelectionChanged="OnPaletteSelected" Padding="0"
                        ToolTip.Tip="The map's ground textures, most used first: click one to paint it">
                 <ListBox.Styles>

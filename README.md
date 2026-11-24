@@ -60,6 +60,8 @@ set blends is learnt from the map itself: plain quads beside transition quads vo
 Britannia set 10 is grass 8 into dirt 11, 11,896 and 14,602 votes against a few hundred); 13 of Britannia's 14
 sets are clear, and the panel says which textures the chosen one blends into. The map's own transition quads come
 back from their corner materials in over 99% of cases. Against ground with no transition the edge stays hard.
+Water height in the Terrain tab moves the map's sea level (in point heights, as the status bar shows them; the
+terrain header stores four times that), as one undo step saved with the terrain.
 The Terrain tab shows the map's ground textures as thumbnails, most used first (the tooltip says what each blends
 into); clicking one paints it. With the brush on, `[` / `]` change its radius and Ctrl+click takes the height (Flatten) or the texture (Paint;
 with blending, the material on the clicked side of a transition quad) from the ground. Saving

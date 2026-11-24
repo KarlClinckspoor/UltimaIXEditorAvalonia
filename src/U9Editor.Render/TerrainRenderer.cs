@@ -162,6 +162,12 @@ namespace U9Editor.Render
             }
         }
 
+        /// <summary>Moves the sea plane (world height).</summary>
+        public void SetWater(float waterWorldY)
+        {
+            lock (gate) waterY = waterWorldY;
+        }
+
         TerrainTextures textures;
         float[] markers;
         int markersFixed;

@@ -40,6 +40,8 @@ namespace U9Editor.Core
             /// <summary>A terrain stroke, and the objects that went up or down with the ground.</summary>
             public TerrainChange Terrain;
             public List<(ObjectMap Map, ObjectEdit Edit)> Follow;
+            /// <summary>The terrain header's water level, as stored (quarter point heights): before and after.</summary>
+            public (int Before, int After)? Water;
             /// <summary>Script slots the step changed: ops before and after (empty = unused).</summary>
             public List<(int Slot, TriggerOp[] Before, TriggerOp[] After)> Scripts;
         }
@@ -190,6 +192,7 @@ namespace U9Editor.Core
             if (s.Follow != null)
                 foreach (var f in Enumerable.Reverse(s.Follow)) { f.Map.Undo(f.Edit); Bump(f.Map, -1); Publish(f.Edit); }
             if (s.Terrain != null) { ApplyTerrain(s.Terrain, after: false); terrainVersion--; }
+            if (s.Water is { } wu) { SetWater(wu.Before); terrainVersion--; }
             if (s.Map != null)
             {
                 s.Map.Undo(s.Edit);
@@ -215,6 +218,7 @@ namespace U9Editor.Core
                 Publish(s.Edit);
             }
             if (s.Terrain != null) { ApplyTerrain(s.Terrain, after: true); terrainVersion++; }
+            if (s.Water is { } wr) { SetWater(wr.After); terrainVersion++; }
             if (s.Follow != null)
                 foreach (var f in s.Follow) { f.Map.Redo(f.Edit); Bump(f.Map, +1); Publish(f.Edit); }
             undo.Add(s);

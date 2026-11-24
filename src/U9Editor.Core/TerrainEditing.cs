@@ -54,6 +54,28 @@ namespace U9Editor.Core
         public bool TerrainChanged => terrainVersion != terrainSaved;
         int terrainVersion, terrainSaved;
 
+        /// <summary>The water level changed: the new level as stored (quarter point heights).</summary>
+        public event Action<int> WaterEdited;
+
+        /// <summary>Sets the map's water level, in point heights (as the status bar shows them); one undo step.</summary>
+        public void SetWaterHeight(float height)
+        {
+            if (Terrain == null) throw new InvalidOperationException("This map has no terrain to edit.");
+            if (InStroke) EndStroke();
+            int stored = (int)MathF.Round(height * 4f);
+            if (stored == Terrain.WaterLevel) return;
+            undo.Add(new Step { Description = "water level", Water = (Terrain.WaterLevel, stored) });
+            redo.Clear();
+            terrainVersion++;
+            SetWater(stored);
+        }
+
+        void SetWater(int stored)
+        {
+            Terrain.WaterLevel = stored;
+            WaterEdited?.Invoke(stored);
+        }
+
         /// <summary>Points changed (x, row, width, height): the renderer sends them again.</summary>
         public event Action<int, int, int, int> TerrainEdited;
 

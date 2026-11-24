@@ -134,6 +134,26 @@ namespace U9Editor.Core.Tests
         }
 
         [Fact]
+        public void TheWaterLevelIsOneUndoStep()
+        {
+            var ed = Britannia(out var keep);
+            using (keep)
+            {
+                Assert.Equal(2024, ed.Terrain.WaterLevel);          // height 506
+                int seen = -1;
+                ed.WaterEdited += w => seen = w;
+                ed.SetWaterHeight(520.25f);
+                Assert.Equal((2081, 2081), (ed.Terrain.WaterLevel, seen));
+                Assert.Equal("water level", ed.UndoDescription);
+                Assert.True(ed.TerrainChanged);
+                ed.Undo();
+                Assert.Equal((2024, 2024), (ed.Terrain.WaterLevel, seen));
+                Assert.False(ed.HasChanges);
+                Assert.Equal(2024, TerrainMap.Read(ed.Terrain.ToBytes()).WaterLevel);
+            }
+        }
+
+        [Fact]
         public void SavingWritesTheTerrainAndKeepsTheOriginal()
         {
             var ed = Britannia(out var keep);
