@@ -35,6 +35,8 @@ Usable for object, link and terrain editing on any map. Planned work is tracked 
 4. **Search and navigation**: find objects by type or name, jump to link destinations, bookmarks.
 5. **Object contents**: book texts, container contents, NPC and object properties.
 6. **New models through Blender**: import and export `sappear.flx` models via glTF.
+7. **Cutscene viewer and editor**: play the game's in-engine cutscenes in the 3D view (starting with the first one,
+   the camera entering the Avatar's house) and edit their camera moves, timing and actors.
 
 ## Getting started
 
