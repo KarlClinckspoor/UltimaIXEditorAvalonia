@@ -16,9 +16,22 @@ namespace U9Editor.Core
         public static void WriteGray(string path, int width, int height, byte[] pixels) => Write(path, width, height, pixels, 0, 1);
         public static void WriteRgb(string path, int width, int height, byte[] pixels) => Write(path, width, height, pixels, 2, 3);
 
+        /// <summary>An RGBA picture as PNG bytes.</summary>
+        public static byte[] EncodeRgba(int width, int height, byte[] pixels)
+        {
+            var ms = new MemoryStream();
+            Write(ms, width, height, pixels, 6, 4);
+            return ms.ToArray();
+        }
+
         static void Write(string path, int width, int height, byte[] pixels, byte colorType, int bpp)
         {
             using var fs = File.Create(path);
+            Write(fs, width, height, pixels, colorType, bpp);
+        }
+
+        static void Write(Stream fs, int width, int height, byte[] pixels, byte colorType, int bpp)
+        {
             fs.Write(new byte[] { 0x89, (byte)'P', (byte)'N', (byte)'G', 13, 10, 26, 10 });
             var ihdr = new byte[13];
             BinaryPrimitives.WriteInt32BigEndian(ihdr, width);

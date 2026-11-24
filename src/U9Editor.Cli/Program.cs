@@ -24,6 +24,9 @@ namespace U9Editor.Cli
                     case "terrain-textures" when args.Length == 3: return TerrainTextures(args[1], args[2]);
                     case "bitmap-frames" when args.Length == 4: return BitmapFrames(args[1], int.Parse(args[2]), args[3]);
                     case "export-web" when args.Length >= 3: return ExportWeb(args);
+                    case "model-export" when args.Length >= 4: return ModelExport(args);
+                    case "model-info" when args.Length == 2: return ModelInfo(args[1]);
+                    case "model-import" when args.Length == 4: return ModelImport(args[1], int.Parse(args[2]), args[3]);
                     default: return Usage();
                 }
             }
@@ -44,8 +47,63 @@ namespace U9Editor.Cli
   u9 terrain-textures <terrain.N> <out.png>  false-colour picture of the texture numbers
   u9 bitmap-frames <bitmap16.flx> <record> <out.png>  every frame of a bitmap record, side by side (row 0 at the top)
   u9 export-web <gamedata> <out> [--maps 9,10,...] [--texture-max 128] [--no-models]
-                                             bake maps for the U9 web viewer (UltimaCartographer/u9viewer/EXPORT.md)");
+                                             bake maps for the U9 web viewer (UltimaCartographer/u9viewer/EXPORT.md)
+  u9 model-export <gamedata> <sappear record> <out.glb> [--lod n]
+                                             a model as binary glTF for Blender (textures embedded; x east, y north, z up)
+  u9 model-info <file.glb>                   what the editor reads from a .glb: triangles per texture, size
+  u9 model-import <gamedata> <sappear record> <in.glb>
+                                             replace a model with a .glb's triangles (static/sappear.flx; the first
+                                             time the original is kept as sappear.flx.orig)");
             return 2;
+        }
+
+        static int ModelExport(string[] args)
+        {
+            var g = GameFolder.TryOpen(args[1]) ?? throw new IOException($"{args[1]} is not an Ultima IX folder");
+            int record = int.Parse(args[2]);
+            int lod = 0;
+            for (int i = 4; i < args.Length; i++) if (args[i] == "--lod" && i + 1 < args.Length) lod = int.Parse(args[++i]);
+            using var sap = FlxArchive.Open(Path.Combine(g.StaticFolder, "sappear.flx"));
+            using var bmp = FlxArchive.Open(Path.Combine(g.StaticFolder, "bitmap16.flx"));
+            var r = sap.Read(record);
+            if (!U9.Formats.Models.SappearModel.IsModel(r)) throw new InvalidDataException($"sappear record {record} is not a model");
+            var glb = GltfModel.Export(r, t => t >= 0 && t < bmp.Count && bmp.Has(t) ? bmp.Read(t) : null, lod, $"sappear {record}");
+            File.WriteAllBytes(args[3], glb);
+            Console.WriteLine($"{args[3]}: {glb.Length} bytes, {U9.Formats.Models.SappearModel.Triangles(r, lod).Count} triangles");
+            return 0;
+        }
+
+        static int ModelImport(string gamedata, int record, string glbPath)
+        {
+            var g = GameFolder.TryOpen(gamedata) ?? throw new IOException($"{gamedata} is not an Ultima IX folder");
+            string path = Path.Combine(g.StaticFolder, "sappear.flx");
+            var tris = GltfModel.Import(File.ReadAllBytes(glbPath));
+            if (tris.Count == 0) throw new InvalidDataException($"{glbPath} has no triangles");
+            byte[] built;
+            using (var sap = FlxArchive.Open(path))
+            {
+                var template = record < sap.Count && sap.Has(record) ? sap.Read(record) : null;
+                built = U9.Formats.Models.SappearWriter.Build(tris, template);
+                if (record >= sap.Count) sap.Resize(record + 1);
+                sap.Write(record, built);
+                if (!File.Exists(path + ".orig")) File.Copy(path, path + ".orig");
+                sap.Save(path + ".new");
+            }
+            File.Move(path + ".new", path, true);
+            Console.WriteLine($"sappear record {record}: {tris.Count} triangles, {built.Length} bytes (original kept as sappear.flx.orig)");
+            return 0;
+        }
+
+        static int ModelInfo(string path)
+        {
+            var tris = GltfModel.Import(File.ReadAllBytes(path));
+            Console.WriteLine($"{path}: {tris.Count} triangles");
+            if (tris.Count == 0) return 0;
+            var all = tris.SelectMany(t => new[] { t.P0, t.P1, t.P2 }).ToList();
+            Console.WriteLine($"  box ({all.Min(p => p.X):0.#}, {all.Min(p => p.Y):0.#}, {all.Min(p => p.Z):0.#}) to ({all.Max(p => p.X):0.#}, {all.Max(p => p.Y):0.#}, {all.Max(p => p.Z):0.#}) object units");
+            foreach (var grp in tris.GroupBy(t => (t.Texture, t.Frame, t.Flags)).OrderBy(x => x.Key.Texture))
+                Console.WriteLine($"  texture {grp.Key.Texture} frame {grp.Key.Frame} flags 0x{grp.Key.Flags:X}: {grp.Count()} triangles");
+            return 0;
         }
 
         static int FlxInfo(string path)

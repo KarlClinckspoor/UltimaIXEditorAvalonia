@@ -111,6 +111,17 @@ grave markers) the panel shows the book's title and text: Set text changes them 
 `static/BOOKS-EN.FLX` (first time keeping `.orig`). The book's number can be changed like any property, to point
 an object at another text.
 
+Models through Blender: File > Export selected object's model (glTF) writes a `.glb` with its textures embedded
+(x east, y north, z up as Blender shows it; one terrain point = 1 m). Edit it in Blender and export it again as glTF
+with Include > Custom Properties on, so each material keeps the game's texture, frame, face flags and colour. File >
+Replace selected object's model from glTF writes the triangles into `static/sappear.flx` (first time keeping
+`.orig`); every object showing that model, on every map, changes. The command line does the same:
+`u9 model-export <gamedata> <record> <out.glb>`, `u9 model-import <gamedata> <record> <in.glb>`, and `u9 model-info
+<file.glb>` shows what the editor reads from a file. Checked in the game: Britain's barrel (model 23), exported,
+made three times as wide in Blender and imported, is drawn by the game with its texture at the archery yard.
+Materials without the u9 properties become untextured faces in their base colour; new textures are not imported
+yet, and an imported model has one limb and one level of detail.
+
 Finding things (Find tab): type words of a type's name (`telescope`, `orb moons`), a type number (`2894`), `#id`
 of an object here, `link:n` of a nonfixed object, or `fixed` / `nonfixed`, and press Enter; all words must match.
 All maps searches every map's object files (open maps with their unsaved edits); the first time reads them all.
@@ -156,7 +167,7 @@ Agents drive the running editor with `.claude/skills/run-u9editor/driver.ps1` (s
 | Bitmaps (`bitmap16.flx`: terrain and model textures) | yes | not yet | — |
 | Fixed / nonfixed objects (`fixed.N`, `nonfixed.N`) | yes | move, turn, copy, delete, place (with undo) | all shipped files |
 | Object types (`TYPES.DAT`, `TYPENAME.FLX`) | yes | not yet | — |
-| Models (`sappear.flx`) | yes (all 3,748 models, every LOD) | not yet | — |
+| Models (`sappear.flx`) | yes (all 3,748 models, every LOD) | one limb, one LOD, from glTF (checked in the game) | — |
 | Trigger scripts (`TRIGGERS.FLX`): map changes | yes | map-change scripts (retarget, new links) | unchanged slots kept |
 | Book texts (`BOOKS-EN.FLX`) | yes | yes (titles and texts) | all 460 records |
 | Object properties (nonfixed property segments) | yes, named, chains followed, contents | values | — |
@@ -196,6 +207,14 @@ Agents drive the running editor with `.claude/skills/run-u9editor/driver.ps1` (s
   Pointer leads to the object's next 16-byte segment (monster generators keep their spawn settings there), Contents
   to the first record inside it, and those records chain through their link field (+0x00). Contained records are
   in no subchunk list (a bag on Britannia holds coins, two silks and a white potion).
+- Models (`sappear.flx`): the header's +0x08 is the centre of the vertices' box, +0x14 its height, +0x18 the
+  distance from that centre to the farthest vertex, +0x1C / +0x28 the same centre and radius again, +0x30 / +0x3C the
+  box. The box's maximum starts at FLT_MIN rather than -FLT_MAX in the original tool, so no maximum is below ~0
+  (that reproduces 3,008 of 3,112 one-limb headers; the rest keep vertices no face uses). +0x58 repeats the centre;
+  +0x64 is not understood. LOD blocks repeat centre, radius and box at +0x0C / +0x18 / +0x1C. A face's plane is at
+  +0x5C (normal) and +0x68 (distance, n·p + d = 0). The four lists after the materials are draw orders, 0xFFFF and
+  every face, padded to 4 bytes, running roughly along +x, +y, -x and -y. Materials: +0 texture, +8 first face,
+  +0xA count, +0xC 0xFFFF, +0xE / +0xF first and last frame.
 - Books: `BOOKS-EN.FLX` record n - 1 is book number n (titles start "n: "): a u32 length and the NUL-terminated
   title, a u32 length and the text, CR LF lines and `` `f1 `` / `` `f2 `` font codes. Record 160 holds an embedded
   document after its title (a leftover); record 4 is a commented "testshop" template.

@@ -11,6 +11,9 @@
         <MenuItem Header="_Save map objects" InputGesture="Ctrl+S" Click="OnSave" />
         <Separator />
         <MenuItem Header="Save _picture of the view…" Click="OnSavePicture" />
+          <Separator />
+          <MenuItem Header="_Export selected object's model (glTF)…" Click="OnExportModel" ToolTip.Tip="A .glb for Blender: textures embedded, x east, y north, z up, one terrain point = 1 m" />
+          <MenuItem Header="_Replace selected object's model from glTF…" Click="OnReplaceModel" ToolTip.Tip="Writes the .glb's triangles into static/sappear.flx (first time keeping .orig); every object showing that model on every map changes" />
         <Separator />
         <MenuItem Header="E_xit" Click="OnExit" />
       </MenuItem>

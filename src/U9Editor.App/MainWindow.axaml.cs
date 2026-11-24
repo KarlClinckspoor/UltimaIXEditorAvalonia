@@ -1284,6 +1284,86 @@ namespace U9Editor.App
 #pragma warning restore CS0618
         }
 
+        // ---- models to and from Blender (glTF)
+
+        async void OnExportModel(object sender, RoutedEventArgs e)
+        {
+            if (selected == null || selected.Model < 0 || appearances == null) { StatusText.Text = "Select an object that shows a model first."; return; }
+            int model = selected.Model;
+            var f = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+            {
+                Title = $"Export model {model} as glTF",
+                DefaultExtension = "glb",
+                SuggestedFileName = $"sappear{model}.glb",
+                FileTypeChoices = new[] { new FilePickerFileType("Binary glTF") { Patterns = new[] { "*.glb" } } },
+            });
+            string path = f?.TryGetLocalPath();
+            if (path == null) return;
+            try
+            {
+                var bmp = bitmaps;
+                var glb = GltfModel.Export(appearances.Read(model), t => bmp != null && t >= 0 && t < bmp.Count && bmp.Has(t) ? bmp.Read(t) : null, 0,
+                                           $"sappear {model} ({selected.Name ?? "type " + selected.Source.Type})");
+                File.WriteAllBytes(path, glb);
+                StatusText.Text = $"Model {model} exported to {path}. In Blender: File > Import > glTF; export back with Include > Custom Properties on.";
+            }
+            catch (Exception ex) when (ex is IOException || ex is InvalidDataException || ex is UnauthorizedAccessException)
+            {
+                StatusText.Text = "Could not export: " + ex.Message;
+            }
+        }
+
+        async void OnReplaceModel(object sender, RoutedEventArgs e)
+        {
+            if (selected == null || selected.Model < 0 || appearances == null || game == null) { StatusText.Text = "Select an object that shows a model first."; return; }
+            int model = selected.Model;
+            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = $"Replace model {model} with a glTF file",
+                AllowMultiple = false,
+                FileTypeFilter = new[] { new FilePickerFileType("Binary glTF") { Patterns = new[] { "*.glb" } } },
+            });
+            string src = files.Count > 0 ? files[0].TryGetLocalPath() : null;
+            if (src == null) return;
+            string path = Directory.EnumerateFiles(game.StaticFolder, "sappear.flx", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).First();
+            try
+            {
+                var tris = GltfModel.Import(File.ReadAllBytes(src));
+                if (tris.Count == 0) { StatusText.Text = "The file has no triangles."; return; }
+                var built = U9.Formats.Models.SappearWriter.Build(tris, appearances.Read(model));
+                appearances.Dispose();
+                appearances = null;
+                using (var a = FlxArchive.Open(path))
+                {
+                    a.Write(model, built);
+                    if (!File.Exists(path + ".orig")) File.Copy(path, path + ".orig");
+                    a.Save(path + ".new");
+                }
+                File.Move(path + ".new", path, true);
+                StatusText.Text = $"Model {model} replaced: {tris.Count} triangles (sappear.flx; the original is kept as sappear.flx.orig). Every object showing it changes.";
+            }
+            catch (Exception ex) when (ex is IOException || ex is InvalidDataException || ex is UnauthorizedAccessException || ex is ArgumentException)
+            {
+                StatusText.Text = "Could not replace the model: " + ex.Message;
+            }
+            finally
+            {
+                appearances ??= FlxArchive.Open(path);
+                // the map is shown again the way it is opened (its edits are kept), the camera where it was
+                if (current != null)
+                {
+                    var (target, distance, pitch, yaw) = (View.Camera.Target, View.Camera.Distance, View.Camera.Pitch, View.Camera.Yaw);
+                    string status = StatusText.Text;
+                    var m = current;
+                    current = null;
+                    LoadMap(m);
+                    View.Camera.Target = target; View.Camera.Distance = distance; View.Camera.Pitch = pitch; View.Camera.Yaw = yaw;
+                    View.Redraw();
+                    StatusText.Text = status;
+                }
+            }
+        }
+
         void OnExit(object sender, RoutedEventArgs e) => Close();
 
         void SetColour(ViewState.Colouring c) { View.State.Colour = c; View.Redraw(); }

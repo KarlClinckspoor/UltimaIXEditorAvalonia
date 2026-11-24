@@ -140,6 +140,8 @@ into them with an explicit z rather than walking. Read the position with `pos` b
   new game's Earth (map 14), with or without a height. Starting on Britannia and then `tppos 4 ...` keeps the game
   running, but there the picture stayed dark and unchanging and the console stopped answering. Britannia (map 9)
   is the dependable test map for now.
+- `tppos` to 63310, 56600 (Britain's archery yard fence) left the console unanswering with or without edited
+  files; start at the spot with `game-test.ps1` instead of teleporting there.
 - Daylight: `game.ps1 hours 5` passes five hours with the game's own `pass_one_hour` cheat, which
   `tools/game-test.ps1` binds to Ctrl+H in `default.kmp` (restored by `-Uninstall`). The console's `sun` prints the
   time (`sun at 06:23 ...`; a new game on Britannia starts about then). Checked: 06:24 + 5 = 11:26.
@@ -151,6 +153,25 @@ into them with an explicit z rather than walking. Read the position with `pos` b
 - Without U9GL, the same cheats work from the key map: under `[CHEAT COMMANDS]` in `gamedata/default.kmp`,
   `ctrl+y = toggle_avatar_fly` (checked: he flies through the house wall), `ctrl+u = toggle_avatar_invulnerable`.
 - Always `-Uninstall` afterwards, and put back any `default.kmp` edit: the game folder is the user's copy.
+
+## Models and Blender
+
+Blender 5.2 is at `C:\Program Files\Blender Foundation\Blender 5.2\blender.exe` on this machine; it runs headless:
+
+```powershell
+dotnet src/U9Editor.Cli/bin/Debug/net10.0/u9.dll model-export gamedata 23 $env:TEMP\barrel.glb
+& "C:\Program Files\Blender Foundation\Blender 5.2\blender.exe" --background --factory-startup --python script.py -- $env:TEMP\barrel.glb $env:TEMP\out.glb
+dotnet src/U9Editor.Cli/bin/Debug/net10.0/u9.dll model-info $env:TEMP\out.glb
+dotnet src/U9Editor.Cli/bin/Debug/net10.0/u9.dll model-import gamedata 23 $env:TEMP\out.glb   # keeps static\sappear.flx.orig
+```
+
+The Blender script imports with `bpy.ops.import_scene.gltf`, edits (scale, then `transform_apply`), and exports with
+`bpy.ops.export_scene.gltf(filepath=..., export_format='GLB', export_extras=True)`: without `export_extras` the
+materials lose the u9 texture numbers. Blender keeps the colour property as a string (it exceeds a 32-bit int); the
+importer reads either. Afterwards put `sappear.flx.orig` back over `sappear.flx` and delete it. In the game, Britain's
+outdoor barrels (model 23) are at 494.6, 444.6: `tools/game-test.ps1 -Map 9 -X 492 -Row 445 -Height 2420` starts in
+the archery yard beside them (without -Height the Avatar can land under a house floor), and the start view after
+`hours 5` and `tap ctrl+delete` shows them at the left edge.
 
 ## Run (human path)
 
