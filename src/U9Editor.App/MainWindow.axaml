@@ -138,7 +138,7 @@
             <StackPanel Spacing="6" x:Name="TerrainPanel">
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <ToggleButton x:Name="BrushToggle" Content="Brush" Click="OnBrushToggle" ToolTip.Tip="B toggles it. While on, a left drag on the ground edits the terrain; right drag orbits, Shift+drag pans." />
-                <ComboBox x:Name="BrushTool" SelectedIndex="0" FontSize="12" SelectionChanged="OnBrushChanged">
+                <ComboBox x:Name="BrushTool" SelectedIndex="0" FontSize="12" SelectionChanged="OnBrushChanged" DropDownClosed="OnBrushToolClosed">
                   <ComboBoxItem Content="Raise" />
                   <ComboBoxItem Content="Lower" />
                   <ComboBoxItem Content="Smooth" />
@@ -146,6 +146,7 @@
                   <ComboBoxItem Content="Paint texture" />
                   <ComboBoxItem Content="Cut holes" />
                   <ComboBoxItem Content="Fill holes" />
+                  <ComboBoxItem Content="Roughen" />
                 </ComboBox>
               </StackPanel>
               <Grid ColumnDefinitions="Auto,*,40" RowDefinitions="Auto,Auto">

@@ -750,7 +750,7 @@ namespace U9Editor.App
             int tool = Math.Max(0, BrushTool.SelectedIndex);
             var b = new TerrainBrush
             {
-                Tool = tool switch { 0 => TerrainTool.Raise, 1 => TerrainTool.Lower, 2 => TerrainTool.Smooth, 3 => TerrainTool.Flatten, 4 => TerrainTool.Paint, _ => TerrainTool.Hole },
+                Tool = tool switch { 0 => TerrainTool.Raise, 1 => TerrainTool.Lower, 2 => TerrainTool.Smooth, 3 => TerrainTool.Flatten, 4 => TerrainTool.Paint, 7 => TerrainTool.Roughen, _ => TerrainTool.Hole },
                 CutHole = tool != 6,
                 Radius = (float)BrushRadius.Value,
                 RandomTurn = BrushTurn.IsChecked == true,
@@ -769,6 +769,7 @@ namespace U9Editor.App
             if (View == null || BrushRadius == null || BrushTurn == null || BrushBlend == null || BlendInfo == null) return;      // during InitializeComponent
             if (View.Brush != null) View.Brush = MakeBrush();
             ShowBlendInfo();
+
         }
 
         void OnBrushSlider(object sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
@@ -780,6 +781,9 @@ namespace U9Editor.App
         }
 
         void OnBrushFieldKey(object sender, KeyEventArgs e) => OnBrushChanged(null, null);
+
+        // a tool picked from the list: B, [ and ] go to the view again, not the list (after it has taken the focus back)
+        void OnBrushToolClosed(object sender, EventArgs e) => Avalonia.Threading.Dispatcher.UIThread.Post(() => View.Focus(), Avalonia.Threading.DispatcherPriority.Input);
 
         void OnBrushSample(TerrainHit h)
         {
@@ -854,6 +858,7 @@ namespace U9Editor.App
             if (BrushTool.SelectedIndex != 4) BrushTool.SelectedIndex = 4;
             OnBrushChanged(null, null);
             StatusText.Text = $"Painting texture {t}.";
+            View.Focus();
         }
 
         void ShowBlendInfo()

@@ -217,7 +217,7 @@ namespace U9Editor.App
             stroking = true;
             DabAt(x, row);
             // the height tools keep working while the mouse is held still
-            if (brush.Tool is TerrainTool.Raise or TerrainTool.Lower or TerrainTool.Smooth or TerrainTool.Flatten)
+            if (brush.Tool is TerrainTool.Raise or TerrainTool.Lower or TerrainTool.Smooth or TerrainTool.Flatten or TerrainTool.Roughen)
             {
                 dabTimer ??= new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Input, (s, e) => { if (stroking) DabAt(lastDabX, lastDabRow); });
                 dabTimer.Start();

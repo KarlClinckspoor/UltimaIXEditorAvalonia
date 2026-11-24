@@ -139,6 +139,26 @@ namespace U9Editor.Core.Tests
         }
 
         [Fact]
+        public void RoughenRaisesSomePointsAndLowersOthers()
+        {
+            var ed = Britannia(out var keep);
+            using (keep)
+            {
+                var pts = Enumerable.Range(0, 17 * 17).Select(k => (X: 342 + k % 17, Y: 342 + k / 17)).ToList();
+                var before = pts.Select(p => ed.Raster.HeightAt(p.X, p.Y)).ToList();
+                ed.BeginStroke(new TerrainBrush { Tool = TerrainTool.Roughen, Radius = 10, Strength = 20, ObjectsFollow = false });
+                for (int i = 0; i < 5; i++) ed.Dab(350, 350);
+                ed.EndStroke();
+                var d = pts.Select((p, i) => ed.Raster.HeightAt(p.X, p.Y) - before[i]).ToList();
+                Assert.True(d.Count(x => x > 5) > 10, $"{d.Count(x => x > 5)} raised");
+                Assert.True(d.Count(x => x < -5) > 10, $"{d.Count(x => x < -5)} lowered");
+                Assert.Equal("roughen", ed.UndoDescription);
+                ed.Undo();
+                Assert.Equal(before, pts.Select(p => ed.Raster.HeightAt(p.X, p.Y)).ToList());
+            }
+        }
+
+        [Fact]
         public void TheWaterLevelIsOneUndoStep()
         {
             var ed = Britannia(out var keep);

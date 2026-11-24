@@ -6,7 +6,7 @@ using U9.Formats.Terrain;
 
 namespace U9Editor.Core
 {
-    public enum TerrainTool { Raise, Lower, Smooth, Flatten, Paint, Hole }
+    public enum TerrainTool { Raise, Lower, Smooth, Flatten, Paint, Hole, Roughen }
 
     /// <summary>What a terrain stroke does. Positions and the radius are in terrain points.</summary>
     public sealed class TerrainBrush
@@ -14,7 +14,7 @@ namespace U9Editor.Core
         public TerrainTool Tool = TerrainTool.Raise;
         /// <summary>Radius in points; the height tools fade out towards it.</summary>
         public float Radius = 4;
-        /// <summary>Raise / Lower: point heights (quarter world units) per dab at the centre. Smooth / Flatten: 0-1 of the way per dab.</summary>
+        /// <summary>Raise / Lower / Roughen: point heights (quarter world units) per dab at the centre. Smooth / Flatten: 0-1 of the way per dab.</summary>
         public float Strength = 8;
         /// <summary>Flatten: the height to flatten to; null takes the height under the first dab.</summary>
         public int? FlattenTo;
@@ -108,6 +108,25 @@ namespace U9Editor.Core
             strokeHeights = new Dictionary<int, float>();
             strokeCorners = new HashSet<int>();
             strokeFlatten = -1;
+            strokeSeed = turns.Next();
+        }
+
+        int strokeSeed;
+
+        /// <summary>Smooth noise in -1..1 for a stroke: hashed values on a lattice of the given cell size, bilinear between.</summary>
+        float Noise(int x, int y, float cell)
+        {
+            float fx = x / cell, fy = y / cell;
+            int ix = (int)MathF.Floor(fx), iy = (int)MathF.Floor(fy);
+            float tx = fx - ix, ty = fy - iy;
+            float H(int a, int b)
+            {
+                uint h = (uint)(a * 73856093) ^ (uint)(b * 19349663) ^ (uint)strokeSeed;
+                h ^= h >> 13; h *= 0x5bd1e995; h ^= h >> 15;
+                return (h & 0xFFFF) / 32767.5f - 1f;
+            }
+            float top = H(ix, iy) * (1 - tx) + H(ix + 1, iy) * tx, bottom = H(ix, iy + 1) * (1 - tx) + H(ix + 1, iy + 1) * tx;
+            return top * (1 - ty) + bottom * ty;
         }
 
         /// <summary>One dab of the stroke's brush centred at (x, row), in points (fractions allowed).</summary>
@@ -140,6 +159,7 @@ namespace U9Editor.Core
                         case TerrainTool.Lower:
                         case TerrainTool.Smooth:
                         case TerrainTool.Flatten:
+                        case TerrainTool.Roughen:
                             {
                                 if (!strokeHeights.TryGetValue(i, out float h)) h = p.Height;
                                 float target = b.Tool switch
@@ -147,6 +167,7 @@ namespace U9Editor.Core
                                     TerrainTool.Raise => h + b.Strength * w,
                                     TerrainTool.Lower => h - b.Strength * w,
                                     TerrainTool.Smooth => h + (Average(snapshot, px, py) - h) * Math.Clamp(b.Strength, 0, 1) * w,
+                                    TerrainTool.Roughen => h + Noise(px, py, Math.Max(1.5f, r / 3)) * b.Strength * w,
                                     _ => h + (strokeFlatten - h) * Math.Clamp(b.Strength, 0, 1) * w,
                                 };
                                 target = Math.Clamp(target, 0, TerrainPoint.MaxHeight);
