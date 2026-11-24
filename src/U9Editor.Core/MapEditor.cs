@@ -13,7 +13,7 @@ namespace U9Editor.Core
     /// Object editing on one map: moves, turns, copies and deletes go to the map's fixed and nonfixed files as
     /// undoable edits, and the scene (marker positions, model instances) follows. Saving writes the changed files.
     /// </summary>
-    public sealed class MapEditor
+    public sealed partial class MapEditor
     {
         public int MapNumber { get; }
         public ObjectMap Fixed { get; }
@@ -31,8 +31,13 @@ namespace U9Editor.Core
 
         sealed class Step
         {
+            public string Description;
+            /// <summary>The object edit; null for a terrain stroke.</summary>
             public ObjectMap Map;
             public ObjectEdit Edit;
+            /// <summary>A terrain stroke, and the objects that went up or down with the ground.</summary>
+            public TerrainChange Terrain;
+            public List<(ObjectMap Map, ObjectEdit Edit)> Follow;
             /// <summary>Script slots the step changed: ops before and after (empty = unused).</summary>
             public List<(int Slot, TriggerOp[] Before, TriggerOp[] After)> Scripts;
         }
@@ -68,9 +73,9 @@ namespace U9Editor.Core
         public bool FixedChanged => fixedVersion != fixedSaved;
         public bool NonfixedChanged => nonfixedVersion != nonfixedSaved;
         public bool ScriptsChanged => scriptVersion != scriptSaved;
-        public bool HasChanges => FixedChanged || NonfixedChanged || ScriptsChanged;
-        public string UndoDescription => undo.Count > 0 ? undo[^1].Edit.Description : null;
-        public string RedoDescription => redo.Count > 0 ? redo[^1].Edit.Description : null;
+        public bool HasChanges => FixedChanged || NonfixedChanged || ScriptsChanged || TerrainChanged;
+        public string UndoDescription => undo.Count > 0 ? undo[^1].Description : null;
+        public string RedoDescription => redo.Count > 0 ? redo[^1].Description : null;
 
         // ---- positions
 
@@ -110,7 +115,7 @@ namespace U9Editor.Core
             pendingScripts = null;
             if (e != null)
             {
-                undo.Add(new Step { Map = map, Edit = e, Scripts = scripts.Count > 0 ? scripts : null });
+                undo.Add(new Step { Description = description, Map = map, Edit = e, Scripts = scripts.Count > 0 ? scripts : null });
                 redo.Clear();
                 Bump(map, +1);
                 if (scripts.Count > 0) scriptVersion++;
@@ -179,12 +184,18 @@ namespace U9Editor.Core
             if (undo.Count == 0) return null;
             var s = undo[^1];
             undo.RemoveAt(undo.Count - 1);
-            s.Map.Undo(s.Edit);
+            if (s.Follow != null)
+                foreach (var f in Enumerable.Reverse(s.Follow)) { f.Map.Undo(f.Edit); Bump(f.Map, -1); Publish(f.Edit); }
+            if (s.Terrain != null) { ApplyTerrain(s.Terrain, after: false); terrainVersion--; }
+            if (s.Map != null)
+            {
+                s.Map.Undo(s.Edit);
+                Bump(s.Map, -1);
+                Publish(s.Edit);
+            }
             if (s.Scripts != null) { foreach (var sc in Enumerable.Reverse(s.Scripts)) Scripts.Set(sc.Slot, sc.Before); scriptVersion--; }
             redo.Add(s);
-            Bump(s.Map, -1);
-            Publish(s.Edit);
-            return s.Edit.Description;
+            return s.Description;
         }
 
         public string Redo()
@@ -192,12 +203,18 @@ namespace U9Editor.Core
             if (redo.Count == 0) return null;
             var s = redo[^1];
             redo.RemoveAt(redo.Count - 1);
-            s.Map.Redo(s.Edit);
             if (s.Scripts != null) { foreach (var sc in s.Scripts) Scripts.Set(sc.Slot, sc.After); scriptVersion++; }
+            if (s.Map != null)
+            {
+                s.Map.Redo(s.Edit);
+                Bump(s.Map, +1);
+                Publish(s.Edit);
+            }
+            if (s.Terrain != null) { ApplyTerrain(s.Terrain, after: true); terrainVersion++; }
+            if (s.Follow != null)
+                foreach (var f in s.Follow) { f.Map.Redo(f.Edit); Bump(f.Map, +1); Publish(f.Edit); }
             undo.Add(s);
-            Bump(s.Map, +1);
-            Publish(s.Edit);
-            return s.Edit.Description;
+            return s.Description;
         }
 
         // ---- new objects and map links
@@ -358,15 +375,18 @@ namespace U9Editor.Core
             }
             if (FixedChanged && Fixed != null && fixedPath != null) { Write(Fixed, fixedPath); written.Add(fixedPath); fixedSaved = fixedVersion; }
             if (NonfixedChanged && Nonfixed != null && nonfixedPath != null) { Write(Nonfixed, nonfixedPath); written.Add(nonfixedPath); nonfixedSaved = nonfixedVersion; }
+            if (TerrainChanged && Terrain != null && TerrainPath != null) { Write(Terrain.ToBytes(), TerrainPath); written.Add(TerrainPath); terrainSaved = terrainVersion; }
             return written;
         }
 
-        static void Write(ObjectMap m, string path)
+        static void Write(ObjectMap m, string path) => Write(m.Data, path);
+
+        static void Write(byte[] data, string path)
         {
             string backup = path + ".orig";
             if (File.Exists(path) && !File.Exists(backup)) File.Copy(path, backup);
             string temp = path + ".new";
-            File.WriteAllBytes(temp, m.Data);
+            File.WriteAllBytes(temp, data);
             File.Move(temp, path, true);
         }
     }

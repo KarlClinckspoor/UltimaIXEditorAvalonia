@@ -63,6 +63,7 @@ uniform int uHoleMode;        // 0 cut out, 1 show in magenta
 uniform int uTileGrid;
 uniform ivec2 uHover;         // point under the mouse, -1 for none
 uniform ivec2 uSelected;
+uniform vec3 uBrush;          // terrain brush: centre (x, row) and radius in points; radius 0 for none
 out vec4 fragColour;
 
 vec3 hashColour(uint n)
@@ -125,7 +126,14 @@ void main()
         vec2 w = fwidth(vPoint) * 1.2;
         if (f.x < w.x || f.y < w.y) col = mix(col, vec3(0.0), 0.45);
     }
-    if (q == uSelected) col = mix(col, vec3(1.0, 0.85, 0.1), 0.7);
+    if (uBrush.z > 0.0)
+    {
+        float d = distance(vPoint, uBrush.xy);
+        float edge = fwidth(d) * 1.5;
+        if (abs(d - uBrush.z) < edge) col = mix(col, vec3(1.0, 0.95, 0.4), 0.85);
+        else if (d < uBrush.z) col = mix(col, vec3(1.0, 0.95, 0.4), 0.12 * (0.5 + 0.5 * cos(3.14159 * d / uBrush.z)));
+    }
+    else if (q == uSelected) col = mix(col, vec3(1.0, 0.85, 0.1), 0.7);
     else if (q == uHover) col = mix(col, vec3(1.0), 0.45);
     fragColour = vec4(col, 1.0);
 }";

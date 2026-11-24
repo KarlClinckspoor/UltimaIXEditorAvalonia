@@ -35,7 +35,7 @@ namespace U9Editor.Core.Tests
                 Bmp = FlxArchive.Open(Path.Combine(g.StaticFolder, "bitmap16.flx")),
             };
             var types = TypeTable.Load(Path.Combine(g.StaticFolder, "TYPES.DAT"));
-            b.Editor = new MapEditor(9, fx, nf, objects, space, new TerrainRaster(t)) { Types = types };
+            b.Editor = new MapEditor(9, fx, nf, objects, space, new TerrainRaster(t)) { Types = types, Terrain = t };
             b.Editor.Scripts = U9.Formats.Triggers.TriggerScripts.Load(Path.Combine(g.StaticFolder, "TRIGGERS.FLX"));
             b.Editor.Models = ModelScene.Build(objects, space, types, i => b.Sap.Read(i), i => b.Bmp.Read(i));
             return b;

@@ -19,6 +19,8 @@ namespace U9Editor.Render
         public bool TileGrid;
         public int HoverX = -1, HoverRow = -1;
         public int SelectedX = -1, SelectedRow = -1;
+        /// <summary>The terrain brush ring: centre in points and radius; radius 0 hides it.</summary>
+        public float BrushX, BrushRow, BrushRadius;
         public bool ShowFixed = true, ShowNonfixed = true;
         /// <summary>Draw object models (and markers only for objects without one, plus link zones), or markers for all.</summary>
         public bool ShowModels = true;
@@ -418,6 +420,7 @@ namespace U9Editor.Render
                 gl.Uniform1(U(terrainProg, "uTileGrid"), st.TileGrid ? 1 : 0);
                 gl.Uniform2(U(terrainProg, "uHover"), st.HoverX, st.HoverRow);
                 gl.Uniform2(U(terrainProg, "uSelected"), st.SelectedX, st.SelectedRow);
+                gl.Uniform3(U(terrainProg, "uBrush"), st.BrushX, st.BrushRow, st.BrushRadius);
                 gl.Uniform1(U(terrainProg, "uHaveTextures"), haveTextures ? 1 : 0);
                 gl.Uniform1(U(terrainProg, "uUvRotate"), st.UvRotate & 3);
                 gl.Uniform1(U(terrainProg, "uUvFlipV"), st.UvFlipV ? 1 : 0);

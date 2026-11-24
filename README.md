@@ -47,6 +47,16 @@ turn 15° (Shift 1°), Page Up / Page Down raise and lower, End puts it on the g
 deletes, Ctrl+Z / Ctrl+Y undo and redo, Ctrl+S saves. Saving writes `static/fixed.N` and `runtime/nonfixed.N` of
 every changed map; the first save keeps each original beside it as `.orig`. Saved games most likely carry their
 own copy of the nonfixed objects (not checked yet), so try nonfixed changes in a new game.
+
+Editing terrain (Terrain tab, or B): with the brush on, a left drag on the ground raises, lowers, smooths,
+flattens (to a typed height, or the height under the first dab), paints a texture and frame, or cuts and fills
+holes; right drag still orbits. Holding the mouse still keeps the height tools working. Objects standing on the
+ground (within 16 object units) go up and down with it; things on tables and floors stay where they are. Each
+stroke is one undo step, objects included. Painting a texture the map did not use adds it to the view's textures.
+Texture from selected point takes the texture and frame of a ground point clicked with the brush off. Saving
+writes `static/terrain.N` (first time keeping `.orig`). Checked in the game: a hill raised at Britannia's bridge
+(height 607 to 907) put the Avatar on its top at z 3626 (the editor reckons 3628).
+
 Start options for scripted pictures: `--look X,ROW --distance D --pitch P --yaw Y`.
 `u9 export-web <gamedata> <out> [--maps 9,10] [--texture-max 128] [--no-models]` bakes maps for the WebGL viewer in
 UltimaCartographer (`u9viewer/EXPORT.md` is the contract); it prints a size report (Britannia alone: 73 MB, of which

@@ -174,6 +174,76 @@ namespace U9Editor.App
         public bool Placing { get; set; }
         public event Action<TerrainHit> PlaceAt;
 
+        // ---- terrain brush
+
+        TerrainBrush brush;
+        /// <summary>While set, a left drag on the ground edits the terrain with it (through <see cref="Editor"/>).</summary>
+        public TerrainBrush Brush
+        {
+            get => brush;
+            set { brush = value; if (value == null) { EndStroke(); State.BrushRadius = 0; } else if (State.BrushRadius > 0) State.BrushRadius = value.Radius; Redraw(); }
+        }
+        /// <summary>A stroke ended (it is on the editor's undo stack).</summary>
+        public event Action StrokeEnded;
+        /// <summary>A stroke could not start; the message says why.</summary>
+        public event Action<string> StrokeRefused;
+        bool stroking;
+        float lastDabX, lastDabRow;
+        DispatcherTimer dabTimer;
+
+        bool PointOf(Point p, out float x, out float row)
+        {
+            var hit = PickAt(p);
+            x = row = 0;
+            if (!hit.Hit) return false;
+            x = hit.World.X;
+            row = space.Row(hit.World.Z);
+            return true;
+        }
+
+        void StartStroke(Point p)
+        {
+            if (Editor?.Terrain == null) { StrokeRefused?.Invoke("This map's terrain cannot be edited here."); return; }
+            if (!PointOf(p, out float x, out float row)) return;
+            Editor.BeginStroke(brush);
+            stroking = true;
+            DabAt(x, row);
+            // the height tools keep working while the mouse is held still
+            if (brush.Tool is TerrainTool.Raise or TerrainTool.Lower or TerrainTool.Smooth or TerrainTool.Flatten)
+            {
+                dabTimer ??= new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Input, (s, e) => { if (stroking) DabAt(lastDabX, lastDabRow); });
+                dabTimer.Start();
+            }
+        }
+
+        void DabAt(float x, float row)
+        {
+            Editor.Dab(x, row);
+            lastDabX = x; lastDabRow = row;
+            State.BrushX = x; State.BrushRow = row;
+        }
+
+        void StrokeTo(Point p)
+        {
+            if (!PointOf(p, out float x, out float row)) return;
+            State.BrushX = x; State.BrushRow = row;
+            // dabs a quarter of the radius apart along the way
+            float step = Math.Max(0.25f, brush.Radius * 0.25f);
+            float dx = x - lastDabX, dr = row - lastDabRow, len = MathF.Sqrt(dx * dx + dr * dr);
+            int n = (int)(len / step);
+            for (int i = 1; i <= n; i++) DabAt(lastDabX + dx * step / len, lastDabRow + dr * step / len);
+            Redraw();
+        }
+
+        void EndStroke()
+        {
+            dabTimer?.Stop();
+            if (!stroking) return;
+            stroking = false;
+            Editor?.EndStroke();
+            StrokeEnded?.Invoke();
+        }
+
         /// <summary>The map's editing session (null: nothing can be moved).</summary>
         public MapEditor Editor { get; set; }
         /// <summary>A dragged object keeps its height above the ground; off, it keeps its height.</summary>
@@ -365,7 +435,8 @@ namespace U9Editor.App
             leftDown = pt.Properties.IsLeftButtonPressed;
             panning = pt.Properties.IsMiddleButtonPressed || (leftDown && (e.KeyModifiers & KeyModifiers.Shift) != 0);
             dragObject = null;
-            if (leftDown && !panning) StartObjectDrag(pressAt);
+            if (leftDown && !panning && brush != null) StartStroke(pressAt);
+            else if (leftDown && !panning) StartObjectDrag(pressAt);
             e.Pointer.Capture(this);
             e.Handled = true;
         }
@@ -378,6 +449,11 @@ namespace U9Editor.App
             {
                 var d = p - lastAt;
                 if (!dragging && Math.Abs(p.X - pressAt.X) + Math.Abs(p.Y - pressAt.Y) > 4) dragging = true;
+                if (stroking)
+                {
+                    StrokeTo(p);
+                    return;
+                }
                 if (dragging && dragObject != null)
                 {
                     DragObjectTo(p);
@@ -393,6 +469,14 @@ namespace U9Editor.App
                 return;
             }
             var hit = PickAt(p);
+            if (brush != null)
+            {
+                State.BrushRadius = hit.Hit ? brush.Radius : 0;
+                if (hit.Hit) { State.BrushX = hit.World.X; State.BrushRow = space.Row(hit.World.Z); }
+                Redraw();
+                Hovered?.Invoke(hit);
+                return;
+            }
             var ob = PickObjectAt(p, hit);
             int hid = ob?.Id ?? -1;
             if (hid != State.HoverObject) { State.HoverObject = hid; Redraw(); }
@@ -409,6 +493,13 @@ namespace U9Editor.App
         protected override void OnPointerReleased(PointerReleasedEventArgs e)
         {
             base.OnPointerReleased(e);
+            if (stroking)
+            {
+                EndStroke();
+                anyDown = dragging = panning = leftDown = false;
+                e.Pointer.Capture(null);
+                return;
+            }
             bool click = anyDown && !dragging && leftDown && !panning;
             var at = e.GetPosition(this);
             var dropped = dragging ? dragObject : null;
@@ -442,6 +533,7 @@ namespace U9Editor.App
         protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
         {
             base.OnPointerCaptureLost(e);
+            EndStroke();
             if (dragObject != null && dragging) CancelDrag();
             dragObject = null;
             anyDown = dragging = panning = leftDown = false;
@@ -450,6 +542,7 @@ namespace U9Editor.App
         protected override void OnPointerExited(PointerEventArgs e)
         {
             base.OnPointerExited(e);
+            if (State.BrushRadius > 0 && !stroking) { State.BrushRadius = 0; Redraw(); }
             if (State.HoverX >= 0)
             {
                 State.HoverX = State.HoverRow = -1;

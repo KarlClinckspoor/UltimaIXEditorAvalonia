@@ -42,6 +42,11 @@ powershell -ExecutionPolicy Bypass -File $s stop
 That opens Moonglow (map 4) over the Lycaeum gate, selects the tree to the right of it (fixed #1110, type 2359),
 drags it onto the road, undoes the drag and reads the status bar. Read every PNG you take.
 
+Terrain brush: `key "b"` turns it on (Terrain tab, Raise), then `drag 420 650 600 560` raises a ridge across the
+road in the view above (the title gains ` *`, the status bar says `Terrain: raise`), `key "^z"` takes it back. The
+tool list is the combo box at 1135,351; with it open, Paint texture is at 1135,493. A drag of that length at
+strength 20 builds a hill some 45 units high: the default (6) is gentler.
+
 | Command | Does |
 |---|---|
 | `launch [editor args]` | starts `src\U9Editor.App\bin\Debug\net10.0\U9Editor.exe`, parks the window at 0,0, waits 10 s for the map and models |

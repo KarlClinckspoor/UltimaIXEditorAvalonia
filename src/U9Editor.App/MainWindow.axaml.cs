@@ -57,6 +57,7 @@ namespace U9Editor.App
         string objectStatus;
         List<MapEntry> maps = new List<MapEntry>();
         TerrainMap terrain;
+        TerrainTextures textures;
         MapEntry current;
         bool screenshotTaken;
 
@@ -74,6 +75,8 @@ namespace U9Editor.App
             View.ObjectDragged += (o, x, y, z) => Edit(() => { editor.Move(o, x, y, z); StatusText.Text = Moved(o); });
             View.FollowTerrain = true;
             View.PlaceAt += OnPlaceAt;
+            View.StrokeEnded += OnStrokeEnded;
+            View.StrokeRefused += m => StatusText.Text = m;
             View.CameraChanged += () => Compass.RenderTransform = new Avalonia.Media.RotateTransform(-View.Camera.Yaw);
             View.FrameDrawn += OnFrameDrawn;
             AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
@@ -147,7 +150,8 @@ namespace U9Editor.App
         {
             try
             {
-                terrain = TerrainMap.Load(m.TerrainPath);
+                // a map with unsaved terrain edits keeps them while other maps are looked at
+                terrain = editors.TryGetValue(m.Number, out var keptEditor) && keptEditor.Terrain != null ? keptEditor.Terrain : TerrainMap.Load(m.TerrainPath);
             }
             catch (Exception ex) when (ex is IOException || ex is InvalidDataException)
             {
@@ -170,7 +174,7 @@ namespace U9Editor.App
                 modelScene = ModelScene.Build(objects, space, typeTable, i => i < sap.Count ? sap.Read(i) : null, i => i < bmp.Count ? bmp.Read(i) : null);
                 View.SetModels(modelScene);
             }
-            TerrainTextures textures = null;
+            textures = null;
             if (bitmaps != null)
             {
                 textures = TerrainTextures.Build(raster, i => i < bitmaps.Count ? bitmaps.Read(i) : null);
@@ -201,7 +205,7 @@ namespace U9Editor.App
 
         SceneObjects LoadObjects(int number, MapSpace space, TerrainRaster raster)
         {
-            if (editor != null) editor.Changed -= OnObjectsChanged;
+            if (editor != null) { editor.Changed -= OnObjectsChanged; editor.TerrainEdited -= OnTerrainEdited; }
             // a map with edits keeps them while other maps are looked at
             if (editors.TryGetValue(number, out var kept))
             {
@@ -217,6 +221,9 @@ namespace U9Editor.App
             editor.Scripts = triggerScripts;
             editor.Types = typeTable;
             editor.Changed += OnObjectsChanged;
+            editor.Terrain = terrain;
+            editor.TerrainPath = current?.TerrainPath;
+            editor.TerrainEdited += OnTerrainEdited;
             View.Editor = editor;       // without it the view cannot start a drag
             currentNonfixed = editor.Nonfixed;
             return editor.Objects;
@@ -369,12 +376,14 @@ namespace U9Editor.App
         {
             string d = editor?.Undo();
             StatusText.Text = d != null ? $"Undid {d}." : "Nothing to undo.";
+            UpdateTitle();
         }
 
         void OnRedo(object sender, RoutedEventArgs e)
         {
             string d = editor?.Redo();
             StatusText.Text = d != null ? $"Redid {d}." : "Nothing to redo.";
+            UpdateTitle();
         }
 
         string ObjectPath(string folder, string name, int number)
@@ -407,7 +416,7 @@ namespace U9Editor.App
             {
                 e.Cancel = true;
                 closeAnyway = true;
-                StatusText.Text = "There are unsaved object changes: Ctrl+S saves them; close again to throw them away.";
+                StatusText.Text = "There are unsaved changes: Ctrl+S saves them; close again to throw them away.";
                 return;
             }
             settings.Save();
@@ -653,8 +662,13 @@ namespace U9Editor.App
             }
             switch (e.Key)
             {
+                case Key.B:
+                    BrushToggle.IsChecked = BrushToggle.IsChecked != true;
+                    OnBrushToggle(null, null);
+                    return true;
                 case Key.Escape:
-                    if (View.Placing) { View.Placing = false; StatusText.Text = "Not placed."; }
+                    if (View.Brush != null) { BrushToggle.IsChecked = false; OnBrushToggle(null, null); }
+                    else if (View.Placing) { View.Placing = false; StatusText.Text = "Not placed."; }
                     else if (View.IsDraggingObject) { View.CancelDrag(); StatusText.Text = "Put back."; }
                     else View.SelectObject(null);
                     return true;
@@ -666,6 +680,83 @@ namespace U9Editor.App
                 case Key.PageDown: OnLower(null, null); return true;
             }
             return false;
+        }
+
+        // ---- terrain
+
+        void OnTerrainEdited(int x, int row, int w, int h) => View.InvalidatePoints(x, row, w, h);
+
+        void OnBrushToggle(object sender, RoutedEventArgs e)
+        {
+            bool on = BrushToggle.IsChecked == true;
+            if (on && editor?.Terrain == null) { BrushToggle.IsChecked = false; StatusText.Text = "No map open."; return; }
+            if (on) { View.SelectObject(null); SideTabs.SelectedIndex = 2; }
+            View.Brush = on ? MakeBrush() : null;
+            StatusText.Text = on ? $"Terrain brush on ({ToolName()}): drag on the ground. B or Esc turns it off." : "Terrain brush off.";
+        }
+
+        string ToolName() => (BrushTool.SelectedItem as ComboBoxItem)?.Content as string ?? "Raise";
+
+        TerrainBrush MakeBrush()
+        {
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            int tool = Math.Max(0, BrushTool.SelectedIndex);
+            var b = new TerrainBrush
+            {
+                Tool = tool switch { 0 => TerrainTool.Raise, 1 => TerrainTool.Lower, 2 => TerrainTool.Smooth, 3 => TerrainTool.Flatten, 4 => TerrainTool.Paint, _ => TerrainTool.Hole },
+                CutHole = tool != 6,
+                Radius = (float)BrushRadius.Value,
+                RandomTurn = BrushTurn.IsChecked == true,
+                ObjectsFollow = BrushFollow.IsChecked == true,
+            };
+            b.Strength = b.Tool is TerrainTool.Smooth or TerrainTool.Flatten ? (float)BrushStrength.Value / 100f : (float)Math.Round(BrushStrength.Value);
+            if (int.TryParse(BrushFlatten.Text, System.Globalization.NumberStyles.Integer, ci, out int f)) b.FlattenTo = Math.Clamp(f, 0, U9.Formats.Terrain.TerrainPoint.MaxHeight);
+            if (int.TryParse(BrushTexture.Text, System.Globalization.NumberStyles.Integer, ci, out int t)) b.Texture = Math.Clamp(t, 0, 1023);
+            if (int.TryParse(BrushFrame.Text, System.Globalization.NumberStyles.Integer, ci, out int fr)) b.Frame = Math.Clamp(fr, 0, 63);
+            return b;
+        }
+
+        void OnBrushChanged(object sender, RoutedEventArgs e)
+        {
+            if (View == null || BrushRadius == null || BrushTurn == null) return;      // during InitializeComponent
+            if (View.Brush != null) View.Brush = MakeBrush();
+        }
+
+        void OnBrushSlider(object sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+        {
+            if (BrushRadiusText == null || BrushStrengthText == null) return;
+            BrushRadiusText.Text = BrushRadius.Value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+            BrushStrengthText.Text = Math.Round(BrushStrength.Value).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            OnBrushChanged(null, null);
+        }
+
+        void OnBrushFieldKey(object sender, KeyEventArgs e) => OnBrushChanged(null, null);
+
+        void OnBrushPickTexture(object sender, RoutedEventArgs e)
+        {
+            if (View.State.SelectedX < 0 || editor?.Raster == null) { StatusText.Text = "Click a ground point first (with the brush off)."; return; }
+            var p = editor.Raster[View.State.SelectedX, View.State.SelectedRow];
+            BrushTexture.Text = p.Texture.ToString();
+            BrushFrame.Text = p.Frame.ToString();
+            BrushTool.SelectedIndex = 4;
+            OnBrushChanged(null, null);
+            StatusText.Text = $"Painting texture {p.Texture}, frame {p.Frame}.";
+        }
+
+        void OnStrokeEnded()
+        {
+            if (editor == null) return;
+            editors[editor.MapNumber] = editor;
+            // a texture the map did not use yet needs its frame in the texture array
+            var b = View.Brush;
+            if (b != null && b.Tool == TerrainTool.Paint && textures != null && bitmaps != null &&
+                textures.Lookup[b.Texture * TerrainTextures.Frames + b.Frame] == 0 && !textures.Missing.Contains((b.Texture, b.Frame)))
+            {
+                textures = TerrainTextures.Build(editor.Raster, i => i < bitmaps.Count ? bitmaps.Read(i) : null);
+                View.SetTextures(textures);
+            }
+            StatusText.Text = editor.UndoDescription != null ? $"Terrain: {editor.UndoDescription} (Ctrl+Z takes it back)." : "Nothing changed.";
+            UpdateTitle();
         }
 
         // ---- menu
