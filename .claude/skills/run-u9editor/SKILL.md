@@ -125,8 +125,13 @@ into them with an explicit z rather than walking. Read the position with `pos` b
 - Keys reach the game with `keybd_event` and scan codes from `MapVirtualKey` (arrows need the extended flag);
   `game.ps1` does that. The game draws its own mouse cursor, so mouse clicks miss: use keys (`game.ps1 quit` is
   Ctrl+X, then Enter on the dialog).
-- `start_at` on Moonglow (map 4) makes the game shut down (cleanly, no crash report) during the teleport, with or
-  without a height; Britannia (map 9) works. Test Moonglow edits some other way for now.
+- `start_at` on Moonglow (map 4) makes the game shut down (cleanly, no crash report) during the teleport from the
+  new game's Earth (map 14), with or without a height. Starting on Britannia and then `tppos 4 ...` keeps the game
+  running, but there the picture stayed dark and unchanging and the console stopped answering. Britannia (map 9)
+  is the dependable test map for now.
+- Daylight: `game.ps1 hours 5` passes five hours with the game's own `pass_one_hour` cheat, which
+  `tools/game-test.ps1` binds to Ctrl+H in `default.kmp` (restored by `-Uninstall`). The console's `sun` prints the
+  time (`sun at 06:23 ...`; a new game on Britannia starts about then). Checked: 06:24 + 5 = 11:26.
 - The console stays open after a command; a teleport closes it. Typing goes to the console while it is open.
 - A new game copies `runtime/nonfixed.N`: back up the files the editor saves (and delete their `.orig`) to put
   the game folder back afterwards.

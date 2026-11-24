@@ -8,7 +8,10 @@
 # X and Row are terrain points, as the editor shows them; Height (object units) is optional: without it the
 # Avatar lands on the terrain (which can be a riverbed or under a castle floor). In the game, Ctrl+P saves the
 # frame as u9-<n>-after.png in the game folder, the console (Ctrl+`) takes "fly", "god", "pos" and
-# "tppos <map> <x> <y> [<z>]", and U9GL logs to %TEMP%\u9log.txt ("CONSOLE start: ..." lines).
+# "tppos <map> <x> <y> [<z>]", and U9GL logs to %TEMP%\u9log.txt ("CONSOLE start: ..." lines). The key map gets
+# ctrl+h = pass_one_hour, another of the game's own cheats, for daylight (default.kmp is put back too).
+# A new game starts on Earth (map 14), and going from there straight to Moonglow (map 4) shuts the game down: start
+# on Britannia and use tppos for other maps.
 param(
     [int]$Map = 9, [double]$X = 467, [double]$Row = 505, [int]$Height = -1,
     [switch]$NoFly, [switch]$NoGod, [switch]$Run, [switch]$Uninstall,
@@ -25,9 +28,10 @@ if ($Uninstall) {
     Remove-Item (Join-Path $game "u9gl") -Recurse -ErrorAction SilentlyContinue
     if (Test-Path (Join-Path $backup "Options.ini")) {
         Copy-Item (Join-Path $backup "Options.ini") (Join-Path $game "Options.ini") -Force
+        if (Test-Path (Join-Path $backup "default.kmp")) { Copy-Item (Join-Path $backup "default.kmp") (Join-Path $game "default.kmp") -Force }
         Remove-Item $backup -Recurse
     }
-    "U9GL taken out; Options.ini put back."
+    "U9GL taken out; Options.ini and default.kmp put back."
     return
 }
 
@@ -35,7 +39,7 @@ $out = (Resolve-Path $U9gl).Path
 foreach ($f in "u9log.dll", "dsound.dll", "u9gl.ini") { if (-not (Test-Path (Join-Path $out $f))) { throw "$out has no ${f}: build U9GL first (u9gl/build.sh)" } }
 if ((Test-Path (Join-Path $game "dsound.dll")) -and -not (Test-Path $backup)) { throw "There is already a dsound.dll beside u9.exe that this script did not put there." }
 
-if (-not (Test-Path $backup)) { New-Item -ItemType Directory $backup | Out-Null; Copy-Item (Join-Path $game "Options.ini") $backup }
+if (-not (Test-Path $backup)) { New-Item -ItemType Directory $backup | Out-Null; Copy-Item (Join-Path $game "Options.ini"), (Join-Path $game "default.kmp") $backup }
 New-Item -ItemType Directory -Force (Join-Path $game "u9gl") | Out-Null
 Copy-Item (Join-Path $out "u9log.dll"), (Join-Path $out "dsound.dll") (Join-Path $game "u9gl") -Force
 Copy-Item (Join-Path $out "dsound.dll") $game -Force
@@ -63,6 +67,11 @@ start_fly = $(if ($NoFly) { 0 } else { 1 })
 start_god = $(if ($NoGod) { 0 } else { 1 })
 "@
 Set-Content (Join-Path $game "u9gl\u9gl.ini") $ini -Encoding ascii
+
+# the game's own hour cheat on ctrl+h, under the key map's empty [CHEAT COMMANDS] section
+$kmp = [IO.File]::ReadAllText((Join-Path $backup "default.kmp"))
+if ($kmp -notmatch 'pass_one_hour') { $kmp = $kmp -replace '\[CHEAT COMMANDS\]\r?\n', "[CHEAT COMMANDS]`r`nctrl+h = pass_one_hour`r`n" }
+[IO.File]::WriteAllText((Join-Path $game "default.kmp"), $kmp)
 
 $opts = Get-Content (Join-Path $game "Options.ini")
 $opts = $opts -replace '^Game Rasterizer=.*', 'Game Rasterizer=3' -replace '^GameScreenDepth=.*', 'GameScreenDepth=16'

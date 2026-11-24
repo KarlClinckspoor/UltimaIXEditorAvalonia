@@ -5,6 +5,7 @@
 #   game.ps1 hold <key> <ms>            hold a key down (walking: hold up 1500)
 #   game.ps1 shot                       Ctrl+P in the game; moves the new u9-<n>-after.png to %TEMP%\u9game-<n>.png
 #   game.ps1 log [<n>]                  the last n lines (default 15) of U9GL's log, %TEMP%\u9log.txt
+#   game.ps1 hours <n>                  pass n hours with the game's own cheat (Ctrl+H, bound by tools/game-test.ps1)
 #   game.ps1 quit                       Ctrl+X, Enter
 # The game reads keys as scan codes (keybd_event with MapVirtualKey); arrows need the extended flag. It draws
 # its own cursor, so mouse clicks miss.
@@ -69,6 +70,7 @@ switch ($cmd) {
         Move-Item $new.FullName $to -Force; $to
     }
     'log' { $n = if ($rest) { [int]$rest[0] } else { 15 }; Get-Content "$env:TEMP\u9log.txt" -Tail $n }
+    'hours' { Front; for ($i = 0; $i -lt [int]$rest[0]; $i++) { Tap "ctrl+h" } }
     'quit' { Front; Tap "ctrl+x"; Start-Sleep -Milliseconds 800; Tap "enter" }
     default { throw "usage: game.ps1 front | tap <keys> | hold <key> <ms> | shot | log [n] | quit" }
 }
