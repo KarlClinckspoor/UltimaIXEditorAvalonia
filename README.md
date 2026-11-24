@@ -80,12 +80,12 @@ Agents drive the running editor with `.claude/skills/run-u9editor/driver.ps1` (s
 | Format | Read | Write | Byte-identical round trip |
 |---|---|---|---|
 | FLX archives (`*.flx`, `texture8.N`, `texture16.N`) | yes | yes (preserve or compact layout) | all 29 shipped archives |
-| Terrain (`terrain.N`) | yes | yes | all 168 shipped maps |
+| Terrain (`terrain.N`) | yes | yes: heights, textures, holes, water level (brushes with undo) | all 168 shipped maps |
 | Bitmaps (`bitmap16.flx`: terrain and model textures) | yes | not yet | — |
-| Fixed / nonfixed objects (`fixed.N`, `nonfixed.N`) | yes | move, turn, copy, delete (with undo) | all shipped files |
+| Fixed / nonfixed objects (`fixed.N`, `nonfixed.N`) | yes | move, turn, copy, delete, place (with undo) | all shipped files |
 | Object types (`TYPES.DAT`, `TYPENAME.FLX`) | yes | not yet | — |
 | Models (`sappear.flx`) | yes (all 3,748 models, every LOD) | not yet | — |
-| Trigger scripts (`TRIGGERS.FLX`): map changes | yes | not yet | — |
+| Trigger scripts (`TRIGGERS.FLX`): map changes | yes | map-change scripts (retarget, new links) | unchanged slots kept |
 
 Findings from the shipped files, beyond the public notes:
 
@@ -128,3 +128,15 @@ Map space (used by the editor):
   transparent pixels. Model faces with flag bit 3 are not drawn: they are the untextured magenta blocking walls
   (579 of the 580 magenta untextured faces in `sappear.flx`, and no other face), such as Moonglow's.
 - Bitmap pixel format is the low nibble of frame byte 1: 3 = 8-bit intensity, 4 = RGB565, 5 = ARGB1555.
+- Terrain transition sets: each 9-frame texture blends two plain textures, and which two can be read off the map:
+  plain quads beside a transition quad vote for the material on the side they touch. On Britannia 13 of its 14
+  sets come out clear (set 10 is grass 8 into dirt 11 by 11,896 and 14,602 votes against a few hundred; set 23 is
+  ambiguous), and the map's 30,000-odd transition quads come back from their corner materials, frame group and
+  turn included, in over 99% of cases. That is what the editor's blended painting uses.
+- Terrain chunks: Britannia shares none (5,588 chunks for 4,096 tiles, the rest stale); Moonglow shares widely
+  (504 chunks for 1,024 tiles). An edit gives a tile its own copy first; saving shares copies that match again.
+- Objects and the ground: many fixed objects are sunk into the terrain on purpose. On Moonglow only 315 of 1,218
+  are within 16 object units of the ground and 698 within 64; plants and the pools' stones sit 45-61 below.
+- In the game (patched U9GL, `tools/game-test.ps1`): a link retargeted and saved by the editor takes the Avatar
+  to the new arrival (59779,64640 for 59776,64640), and a hill raised and saved puts him on its top at the height
+  the editor reckons (z 3626 for 3628).
