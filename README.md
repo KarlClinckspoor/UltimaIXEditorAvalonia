@@ -31,6 +31,15 @@ frame and quits). In the view: left drag orbits, middle or Shift+drag pans, whee
 R/F raise and lower, Tab toggles the top-down map, Home frames the map, click selects a point or object (shown in
 the status bar). The Links panel lists the current map's map changes; double-click goes to where one leads.
 
+Placing objects: the Place object tab lists every type (those already on the map first, with how many); pick one,
+press Place and click the ground. The new record copies flags and model from one of its kind on the map.
+
+Editing map links (Map links tab): select a link (or click its yellow zone), then Retarget selected sends it to the
+map and link in the fields; the zone gets a new TRIGGERS.FLX script slot, since 68 shipped scripts serve several
+zones. Free link finds an unused link number in the destination map; New link at point copies a zone to the
+clicked ground point; New arrival at point puts a violet arrival marker (type 1134) with the link there. Saving
+writes TRIGGERS.FLX too (original kept as .orig).
+
 Editing objects: click an object (its model, or its marker with models off) to select it; drag it to move it (it
 keeps its height above the ground unless Edit > Dragged objects follow the terrain is off; Esc puts it back).
 The Selected object panel takes exact X, Row (points), Z (object units) and a turn in degrees. Keys: `[` / `]`

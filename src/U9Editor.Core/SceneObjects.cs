@@ -15,6 +15,8 @@ namespace U9Editor.Core
         public string Name { get; init; }
         /// <summary>A trigger zone that changes map (see <see cref="MapLinks"/>).</summary>
         public bool IsLinkZone { get; set; }
+        /// <summary>An arrival marker (nonfixed type 1134), where map changes land.</summary>
+        public bool IsArrival => Kind == ObjectFileKind.Nonfixed && Source.Type == 1134;
         /// <summary>The model drawn for it (set by <see cref="ModelScene"/>), or -1: then it is drawn as a marker.</summary>
         public int Model { get; set; } = -1;
         /// <summary>Deleted from the map as far as the view knows (see <see cref="MapObject.Removed"/>).</summary>

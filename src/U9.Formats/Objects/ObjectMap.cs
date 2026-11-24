@@ -230,7 +230,7 @@ namespace U9.Formats.Objects
             if (chunk != o.Chunk)
             {
                 CheckMovable(o);
-                int rec = CopyInto(chunk, o.Raw, o.PropertyOffset);
+                int rec = CopyInto(chunk, o.Raw, SegmentOf(o));
                 Unlink(o);
                 FreeRecord(o);
                 byOffset.Remove(o.FileOffset);
@@ -264,6 +264,24 @@ namespace U9.Formats.Objects
             Put(o.FileOffset + 0x0C, b);
         }
 
+        /// <summary>Sets a nonfixed object's link number (+0x1A), which triggers use to find it.</summary>
+        public void SetLink(MapObject o, int link)
+        {
+            if (Kind != ObjectFileKind.Nonfixed) throw new InvalidOperationException("Only nonfixed objects have a link");
+            Touch(o);
+            PutU16(o.FileOffset + 0x1A, link & 0xFFFF);
+        }
+
+        /// <summary>Sets one of the six u16 parameters of a nonfixed object's property segment (for a trigger property, its slot).</summary>
+        public void SetPropertyParam(MapObject o, int index, int value)
+        {
+            int p = o.PropertyOffset;
+            if (p == 0 || DataStart + p + 16 > Data.Length) throw new InvalidOperationException("The object has no property segment");
+            if ((uint)index > 5) throw new ArgumentOutOfRangeException(nameof(index));
+            Touch(o);
+            PutU16(DataStart + p + 4 + 2 * index, value & 0xFFFF);
+        }
+
         static short Q(float v) => (short)Math.Clamp((int)MathF.Round(v * 32767f), -32767, 32767);
 
         /// <summary>Deletes an object: unlinks it and gives back its space (undoable inside an edit).</summary>
@@ -284,9 +302,24 @@ namespace U9.Formats.Objects
             if (o.Removed) throw new InvalidOperationException("The object was removed");
             if (mapX < 0 || mapY < 0 || mapX >= Width * ChunkUnits || mapY >= Height * ChunkUnits) throw new ArgumentOutOfRangeException(nameof(mapX), "Outside the map");
             CheckMovable(o);
+            return Add(o.Raw, SegmentOf(o), mapX, mapY, z);
+        }
+
+        /// <summary>
+        /// A new object from a record (RecordSize bytes: type, rotation, flags, model, link as wanted; the list link,
+        /// position and property offset are filled in) and, for nonfixed files, an optional 16-byte property
+        /// segment. Either may come from another file. Position across the map and height in object units.
+        /// </summary>
+        public MapObject Add(byte[] record, byte[] segment, int mapX, int mapY, int z)
+        {
+            if (record == null || record.Length != RecordSize) throw new ArgumentException($"A record is {RecordSize} bytes", nameof(record));
+            if (segment != null && (Kind != ObjectFileKind.Nonfixed || segment.Length != 16)) throw new ArgumentException("A property segment is 16 bytes, nonfixed only", nameof(segment));
+            if (segment != null && (segment[1] == 0xFF || segment[2] == 0xFF || segment[3] == 0xFF)) throw new ArgumentException("A property segment that chains on cannot be copied", nameof(segment));
+            if (mapX < 0 || mapY < 0 || mapX >= Width * ChunkUnits || mapY >= Height * ChunkUnits) throw new ArgumentOutOfRangeException(nameof(mapX), "Outside the map");
+            if ((uint)z > 0xFFFF) throw new ArgumentOutOfRangeException(nameof(z));
             int chunk = mapX / ChunkUnits + mapY / ChunkUnits * Width;
             int x = mapX % ChunkUnits, y = mapY % ChunkUnits;
-            int rec = CopyInto(chunk, o.Raw, o.PropertyOffset);
+            int rec = CopyInto(chunk, record, segment);
             var n = new MapObject
             {
                 Owner = this, FileOffset = rec, ChunkX = chunk % Width * ChunkUnits, ChunkY = chunk / Width * ChunkUnits,
@@ -321,15 +354,21 @@ namespace U9.Formats.Objects
         }
 
         /// <summary>Writes a record (and a copy of its property segment) into a chunk's pages, unlinked; returns its file offset.</summary>
-        int CopyInto(int chunk, byte[] raw, int propertyOffset)
+        byte[] SegmentOf(MapObject o)
+        {
+            int p = o.PropertyOffset;
+            return Kind == ObjectFileKind.Nonfixed && p != 0 && DataStart + p + 16 <= Data.Length ? Data.AsSpan(DataStart + p, 16).ToArray() : null;
+        }
+
+        int CopyInto(int chunk, byte[] raw, byte[] seg)
         {
             int rec = Allocate(chunk, RecordSize);
             CountRecords(rec, +1);
             raw = (byte[])raw.Clone();
             BinaryPrimitives.WriteUInt32LittleEndian(raw, 0);
-            if (Kind == ObjectFileKind.Nonfixed && propertyOffset != 0 && DataStart + propertyOffset + 16 <= Data.Length)
+            if (Kind == ObjectFileKind.Nonfixed) BinaryPrimitives.WriteUInt32LittleEndian(raw.AsSpan(0x1C), 0);
+            if (Kind == ObjectFileKind.Nonfixed && seg != null)
             {
-                var seg = Data.AsSpan(DataStart + propertyOffset, 16).ToArray();
                 int p = Allocate(chunk, 16);
                 Put(p, seg);
                 CountProperties(p, +1);

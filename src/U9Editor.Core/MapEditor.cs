@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using U9.Formats.Models;
 using U9.Formats.Objects;
+using U9.Formats.Triggers;
 
 namespace U9Editor.Core
 {
@@ -22,14 +24,22 @@ namespace U9Editor.Core
         /// <summary>Null when models are not shown (no sappear.flx).</summary>
         public ModelScene Models { get; set; }
 
+        /// <summary>TRIGGERS.FLX, shared by every map's editor; null when the game has none.</summary>
+        public TriggerScripts Scripts { get; set; }
+        /// <summary>TYPES.DAT, for new objects' default models.</summary>
+        public TypeTable Types { get; set; }
+
         sealed class Step
         {
             public ObjectMap Map;
             public ObjectEdit Edit;
+            /// <summary>Script slots the step changed: ops before and after (empty = unused).</summary>
+            public List<(int Slot, TriggerOp[] Before, TriggerOp[] After)> Scripts;
         }
 
         readonly List<Step> undo = new List<Step>(), redo = new List<Step>();
-        int fixedVersion, nonfixedVersion, fixedSaved, nonfixedSaved;
+        int fixedVersion, nonfixedVersion, fixedSaved, nonfixedSaved, scriptVersion, scriptSaved;
+        List<(int Slot, TriggerOp[] Before, TriggerOp[] After)> pendingScripts;
 
         /// <summary>
         /// Objects changed. The flag is true when objects appeared or went (the model instances were regrouped and
@@ -57,7 +67,8 @@ namespace U9Editor.Core
 
         public bool FixedChanged => fixedVersion != fixedSaved;
         public bool NonfixedChanged => nonfixedVersion != nonfixedSaved;
-        public bool HasChanges => FixedChanged || NonfixedChanged;
+        public bool ScriptsChanged => scriptVersion != scriptSaved;
+        public bool HasChanges => FixedChanged || NonfixedChanged || ScriptsChanged;
         public string UndoDescription => undo.Count > 0 ? undo[^1].Edit.Description : null;
         public string RedoDescription => redo.Count > 0 ? redo[^1].Edit.Description : null;
 
@@ -83,20 +94,26 @@ namespace U9Editor.Core
         T Apply<T>(ObjectMap map, string description, Func<T> action)
         {
             map.BeginEdit(description);
+            pendingScripts = new List<(int, TriggerOp[], TriggerOp[])>();
             T result;
             try { result = action(); }
             catch
             {
                 var partial = map.EndEdit();
                 if (partial != null) map.Undo(partial);
+                foreach (var sc in Enumerable.Reverse(pendingScripts)) Scripts.Set(sc.Slot, sc.Before);
+                pendingScripts = null;
                 throw;
             }
             var e = map.EndEdit();
+            var scripts = pendingScripts;
+            pendingScripts = null;
             if (e != null)
             {
-                undo.Add(new Step { Map = map, Edit = e });
+                undo.Add(new Step { Map = map, Edit = e, Scripts = scripts.Count > 0 ? scripts : null });
                 redo.Clear();
                 Bump(map, +1);
+                if (scripts.Count > 0) scriptVersion++;
                 Publish(e);
             }
             return result;
@@ -163,6 +180,7 @@ namespace U9Editor.Core
             var s = undo[^1];
             undo.RemoveAt(undo.Count - 1);
             s.Map.Undo(s.Edit);
+            if (s.Scripts != null) { foreach (var sc in Enumerable.Reverse(s.Scripts)) Scripts.Set(sc.Slot, sc.Before); scriptVersion--; }
             redo.Add(s);
             Bump(s.Map, -1);
             Publish(s.Edit);
@@ -175,10 +193,152 @@ namespace U9Editor.Core
             var s = redo[^1];
             redo.RemoveAt(redo.Count - 1);
             s.Map.Redo(s.Edit);
+            if (s.Scripts != null) { foreach (var sc in s.Scripts) Scripts.Set(sc.Slot, sc.After); scriptVersion++; }
             undo.Add(s);
             Bump(s.Map, +1);
             Publish(s.Edit);
             return s.Edit.Description;
+        }
+
+        // ---- new objects and map links
+
+        /// <summary>
+        /// A record for a new object of a type: a copy of one already in the map's file of that kind (flags, model and
+        /// such as the game set them; position, link and properties are cleared or replaced), else a fresh one with no
+        /// rotation and, nonfixed, the type's default model.
+        /// </summary>
+        public byte[] TemplateFor(ObjectFileKind kind, int type)
+        {
+            var map = kind == ObjectFileKind.Fixed ? Fixed : Nonfixed;
+            if (map == null) return null;
+            var like = map.Objects.FirstOrDefault(o => o.Type == type);
+            var r = like != null ? like.Raw : new byte[map.RecordSize];
+            if (like == null)
+            {
+                BitConverter.TryWriteBytes(r.AsSpan(0x0A), (ushort)type);
+                BitConverter.TryWriteBytes(r.AsSpan(0x12), (short)32767);
+                if (kind == ObjectFileKind.Nonfixed && Types != null) BitConverter.TryWriteBytes(r.AsSpan(0x18), (ushort)Math.Max(0, Types[type].DefaultModel));
+            }
+            if (kind == ObjectFileKind.Nonfixed) BitConverter.TryWriteBytes(r.AsSpan(0x1A), (ushort)0);
+            return r;
+        }
+
+        /// <summary>
+        /// Which file a new object of a type goes in: the one that already holds objects of that type in this map,
+        /// else nonfixed for things that can be picked up (weight under 254), fixed for the rest.
+        /// </summary>
+        public ObjectFileKind KindFor(int type)
+        {
+            int f = Fixed?.Objects.Count(o => o.Type == type) ?? 0, n = Nonfixed?.Objects.Count(o => o.Type == type) ?? 0;
+            if (f != n) return f > n ? ObjectFileKind.Fixed : ObjectFileKind.Nonfixed;
+            if (Nonfixed == null) return ObjectFileKind.Fixed;
+            if (Fixed == null) return ObjectFileKind.Nonfixed;
+            return Types != null && Types[type].Weight >= 254 ? ObjectFileKind.Fixed : ObjectFileKind.Nonfixed;
+        }
+
+        /// <summary>Places a new object of a type; position across the map and height in object units.</summary>
+        public SceneObject Place(ObjectFileKind kind, int type, int mapX, int mapY, int z)
+        {
+            var map = kind == ObjectFileKind.Fixed ? Fixed : Nonfixed;
+            if (map == null) throw new InvalidOperationException($"This map has no {(kind == ObjectFileKind.Fixed ? "fixed" : "nonfixed")} object file");
+            var record = TemplateFor(kind, type);
+            mapX = Math.Clamp(mapX, 0, map.Width * ObjectMap.ChunkUnits - 1);
+            mapY = Math.Clamp(mapY, 0, map.Height * ObjectMap.ChunkUnits - 1);
+            var o = Apply(map, "place", () => map.Add(record, null, mapX, mapY, Math.Clamp(z, 0, 0xFFFF)));
+            return Objects.Of(o);
+        }
+
+        /// <summary>
+        /// A link number no object in this map's nonfixed file uses: one above the highest ordinary link. Values from
+        /// 0xF000 up are passed over, since some objects carry 65535 (a "no link" mark, it seems) and a script's link
+        /// offset could reach the neighbours of a number.
+        /// </summary>
+        public int FreeLink() => FreeLinkIn(Nonfixed);
+
+        /// <summary><see cref="FreeLink"/> for any nonfixed file (null: 1).</summary>
+        public static int FreeLinkIn(ObjectMap nonfixed)
+        {
+            var used = new HashSet<int>(nonfixed?.Objects.Select(o => o.Link) ?? Enumerable.Empty<int>());
+            int link = used.Where(l => l < 0xF000).DefaultIfEmpty(0).Max() + 1;
+            while (used.Contains(link)) link++;
+            return link;
+        }
+
+        void SetScript(int slot, TriggerOp[] ops)
+        {
+            var before = Scripts.IsUsed(slot) ? Scripts[slot] : Array.Empty<TriggerOp>();
+            Scripts.Set(slot, ops);
+            pendingScripts.Add((slot, before, ops));
+        }
+
+        /// <summary>The parameter index of the zone's property that names a trigger slot, or -1.</summary>
+        static int TriggerParam(MapObject zone, int slot)
+        {
+            var p = zone.Properties;
+            if (p == null) return -1;
+            for (int k = 0; k < 3; k++)
+                if (p.Ids[k] == PropertySegment.OoTrigger || p.Ids[k] == PropertySegment.SfTrigger)
+                    for (int j = 0; j < 2; j++)
+                        if (p.Params[2 * k + j] == slot) return 2 * k + j;
+            return -1;
+        }
+
+        /// <summary>
+        /// Points a map change somewhere else. The zone gets a new script slot (68 of the shipped change-map scripts
+        /// serve several zones, which must not move with it): set link, change map, end.
+        /// </summary>
+        public void RetargetLink(MapLink link, int destinationMap, int destinationLink, int markerType)
+        {
+            if (Scripts == null) throw new InvalidOperationException("No TRIGGERS.FLX");
+            var zone = link.Zone;
+            int param = TriggerParam(zone, link.TriggerSlot);
+            if (param < 0) throw new InvalidOperationException("The zone's properties no longer name that trigger");
+            int flags = Scripts[link.TriggerSlot].Where(o => o.Command == TriggerOp.ChangeMap).Select(o => o.B >> 8).FirstOrDefault();
+            Apply(zone.Map, "retarget link", () =>
+            {
+                int slot = Scripts.FreeSlot();
+                SetScript(slot, TriggerScripts.ChangeMapScript(destinationLink, markerType, destinationMap, flags));
+                zone.Map.SetPropertyParam(zone, param, slot);
+                return 0;
+            });
+        }
+
+        /// <summary>
+        /// A new map change at a position: a copy of a zone (record and property segment, which hold the zone's size
+        /// and type; from any map) with its own new script to the destination.
+        /// </summary>
+        public SceneObject NewLink(byte[] zoneRecord, byte[] zoneSegment, int mapX, int mapY, int z, int destinationMap, int destinationLink, int markerType = 1134)
+        {
+            if (Scripts == null) throw new InvalidOperationException("No TRIGGERS.FLX");
+            if (Nonfixed == null) throw new InvalidOperationException("This map has no nonfixed object file");
+            var seg = new PropertySegment(zoneSegment);
+            int k = Array.FindIndex(seg.Ids, id => id == PropertySegment.OoTrigger || id == PropertySegment.SfTrigger);
+            if (k < 0) throw new ArgumentException("The template zone has no trigger property");
+            var o = Apply(Nonfixed, "new link", () =>
+            {
+                var zone = Nonfixed.Add(zoneRecord, zoneSegment, mapX, mapY, Math.Clamp(z, 0, 0xFFFF));
+                Nonfixed.SetLink(zone, 0);
+                int slot = Scripts.FreeSlot();
+                SetScript(slot, TriggerScripts.ChangeMapScript(destinationLink, markerType, destinationMap));
+                Nonfixed.SetPropertyParam(zone, 2 * k, slot);
+                Nonfixed.SetPropertyParam(zone, 2 * k + 1, 0);
+                return zone;
+            });
+            return Objects.Of(o);
+        }
+
+        /// <summary>A new arrival marker (type 1134 unless told otherwise) with a link, where map changes can land.</summary>
+        public SceneObject NewArrival(int link, int mapX, int mapY, int z, int markerType = 1134)
+        {
+            if (Nonfixed == null) throw new InvalidOperationException("This map has no nonfixed object file");
+            var record = TemplateFor(ObjectFileKind.Nonfixed, markerType);
+            var o = Apply(Nonfixed, "new arrival", () =>
+            {
+                var m = Nonfixed.Add(record, null, mapX, mapY, Math.Clamp(z, 0, 0xFFFF));
+                Nonfixed.SetLink(m, link);
+                return m;
+            });
+            return Objects.Of(o);
         }
 
         /// <summary>
@@ -188,6 +348,14 @@ namespace U9Editor.Core
         public List<string> Save(string fixedPath, string nonfixedPath)
         {
             var written = new List<string>();
+            if (ScriptsChanged && Scripts != null)
+            {
+                string backup = Scripts.Path + ".orig";
+                if (File.Exists(Scripts.Path) && !File.Exists(backup)) File.Copy(Scripts.Path, backup);
+                Scripts.Save();
+                written.Add(Scripts.Path);
+                scriptSaved = scriptVersion;
+            }
             if (FixedChanged && Fixed != null && fixedPath != null) { Write(Fixed, fixedPath); written.Add(fixedPath); fixedSaved = fixedVersion; }
             if (NonfixedChanged && Nonfixed != null && nonfixedPath != null) { Write(Nonfixed, nonfixedPath); written.Add(nonfixedPath); nonfixedSaved = nonfixedVersion; }
             return written;

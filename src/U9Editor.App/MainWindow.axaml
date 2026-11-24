@@ -90,10 +90,51 @@
           </StackPanel>
           <TextBlock x:Name="ObjectDetails" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
         </StackPanel>
-        <TextBlock x:Name="LinksHeader" DockPanel.Dock="Top" Text="Map links" FontWeight="SemiBold" Margin="0,0,0,2" />
-        <TextBlock DockPanel.Dock="Top" Opacity="0.6" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"
-                   Text="Click: show the trigger zone. Double-click: go to where it leads (opens the other map)." />
-        <ListBox x:Name="LinksList" FontSize="12" SelectionChanged="OnLinkSelected" DoubleTapped="OnLinkGo" />
+        <TabControl x:Name="SideTabs" Padding="0,4,0,0">
+          <TabItem Header="Map links" FontSize="13">
+            <DockPanel>
+              <TextBlock x:Name="LinksHeader" DockPanel.Dock="Top" Text="Map links" FontWeight="SemiBold" Margin="0,0,0,2" />
+              <TextBlock DockPanel.Dock="Top" Opacity="0.6" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"
+                         Text="Click: show the trigger zone. Double-click: go to where it leads (opens the other map). Yellow markers are zones, violet ones arrivals." />
+              <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,6,0,0" KeyDown="OnLinkFieldsKey">
+                <Grid ColumnDefinitions="Auto,*,Auto,*,Auto,*">
+                  <TextBlock Text="To map" VerticalAlignment="Center" Margin="0,0,4,0" FontSize="12" />
+                  <TextBox x:Name="LinkMap" Grid.Column="1" FontSize="12" Margin="0,0,6,0" />
+                  <TextBlock Text="Link" Grid.Column="2" VerticalAlignment="Center" Margin="0,0,4,0" FontSize="12" />
+                  <TextBox x:Name="LinkNumber" Grid.Column="3" FontSize="12" Margin="0,0,6,0" />
+                  <TextBlock Text="Marker" Grid.Column="4" VerticalAlignment="Center" Margin="0,0,4,0" FontSize="12" />
+                  <TextBox x:Name="LinkMarker" Grid.Column="5" FontSize="12" Text="1134" />
+                </Grid>
+                <WrapPanel>
+                  <Button Content="Retarget selected" Click="OnRetarget" Margin="0,0,4,4" ToolTip.Tip="Send the selected link to the map and link above (it gets its own script)" />
+                  <Button Content="Free link" Click="OnFreeLink" Margin="0,0,4,4" ToolTip.Tip="A link number nobody uses in the destination map" />
+                  <Button Content="New link at point" Click="OnNewLink" Margin="0,0,4,4" ToolTip.Tip="A map change zone at the selected ground point, to the map and link above" />
+                  <Button Content="New arrival at point" Click="OnNewArrival" Margin="0,0,4,4" ToolTip.Tip="An arrival marker with the link above, at the selected ground point of this map" />
+                </WrapPanel>
+              </StackPanel>
+              <ListBox x:Name="LinksList" FontSize="12" SelectionChanged="OnLinkSelected" DoubleTapped="OnLinkGo" />
+            </DockPanel>
+          </TabItem>
+          <TabItem Header="Place object" FontSize="13">
+            <DockPanel>
+              <TextBox x:Name="PlaceSearch" DockPanel.Dock="Top" Watermark="Search types by name or number" FontSize="12" TextChanged="OnPlaceSearch" Margin="0,0,0,4" />
+              <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,6,0,0">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="File" VerticalAlignment="Center" FontSize="12" />
+                  <ComboBox x:Name="PlaceKind" SelectedIndex="0" FontSize="12">
+                    <ComboBoxItem Content="as the map has it" />
+                    <ComboBoxItem Content="fixed (scenery)" />
+                    <ComboBoxItem Content="nonfixed (items, NPCs)" />
+                  </ComboBox>
+                  <Button x:Name="PlaceButton" Content="Place" Click="OnPlace" />
+                </StackPanel>
+                <TextBlock Opacity="0.6" FontSize="11" TextWrapping="Wrap"
+                           Text="Pick a type, press Place, then click the ground. Esc cancels. The new object takes its flags from one of its kind already on the map." />
+              </StackPanel>
+              <ListBox x:Name="PlaceList" FontSize="12" DoubleTapped="OnPlace" />
+            </DockPanel>
+          </TabItem>
+        </TabControl>
       </DockPanel>
     </Border>
     <Grid>

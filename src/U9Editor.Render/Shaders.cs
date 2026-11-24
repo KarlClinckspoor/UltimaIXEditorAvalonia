@@ -147,7 +147,7 @@ void main()
     if (uOnlyZones == 1 && aKind < 1.5) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     int id = int(aId + 0.5);
     float size = clamp(uPointScale / gl_Position.w, 3.0, 14.0);
-    vColour = aKind < 0.5 ? vec3(1.0, 0.62, 0.15) : aKind < 1.5 ? vec3(0.25, 0.9, 1.0) : vec3(1.0, 0.95, 0.1);
+    vColour = aKind < 0.5 ? vec3(1.0, 0.62, 0.15) : aKind < 1.5 ? vec3(0.25, 0.9, 1.0) : aKind < 2.5 ? vec3(1.0, 0.95, 0.1) : vec3(0.7, 0.45, 1.0);   // fixed, nonfixed, map change zone, arrival
     if (aKind > 1.5) size = max(size, 9.0) + 3.0;
     if (id == uHover) { vColour = vec3(1.0); size += 4.0; }
     if (id == uSelected) { vColour = vec3(1.0, 0.2, 0.9); size += 6.0; }

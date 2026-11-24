@@ -38,6 +38,16 @@ namespace U9Editor.App
         bool closeAnyway;
         (double X, double Row)? lookAfterLoad;
 
+        sealed class TypeItem
+        {
+            public int Type;
+            public string Name;
+            public int Here;
+            public override string ToString() => $"{Type,5}  {Name ?? "(no name)"}" + (Here > 0 ? $"  ({Here} here)" : "");
+        }
+        List<TypeItem> allTypes = new List<TypeItem>();
+        TriggerScripts triggerScripts;
+
         sealed class LinkItem
         {
             public MapLink Link;
@@ -63,6 +73,7 @@ namespace U9Editor.App
             View.ObjectDragging += (o, x, y, z) => StatusText.Text = $"moving {o.Name ?? "type " + o.Source.Type} to ({x / 128.0:F2}, {y / 128.0:F2}) z {z}   (Esc puts it back)";
             View.ObjectDragged += (o, x, y, z) => Edit(() => { editor.Move(o, x, y, z); StatusText.Text = Moved(o); });
             View.FollowTerrain = true;
+            View.PlaceAt += OnPlaceAt;
             View.CameraChanged += () => Compass.RenderTransform = new Avalonia.Media.RotateTransform(-View.Camera.Yaw);
             View.FrameDrawn += OnFrameDrawn;
             AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
@@ -112,7 +123,14 @@ namespace U9Editor.App
             string namesPath = Directory.EnumerateFiles(g.StaticFolder, "typename.flx", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault();
             typeNames = namesPath != null ? TypeNames.Load(namesPath) : null;
             string trigPath = Directory.EnumerateFiles(g.StaticFolder, "triggers.flx", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault();
-            mapLinks = trigPath != null ? new MapLinks(TriggerScripts.Load(trigPath), n => LoadObjectFile("runtime", "nonfixed", n, ObjectFileKind.Nonfixed)) : null;
+            triggerScripts = trigPath != null ? TriggerScripts.Load(trigPath) : null;
+            // the editors' own copies come first, so links see unsaved edits in other maps
+            mapLinks = triggerScripts != null ? new MapLinks(triggerScripts, n => editors.TryGetValue(n, out var ed) ? ed.Nonfixed : LoadObjectFile("runtime", "nonfixed", n, ObjectFileKind.Nonfixed)) : null;
+            allTypes = new List<TypeItem>();
+            if (typeTable != null)
+                for (int t = 0; t < typeTable.Count; t++)
+                    if (t != TypeTable.PlaceholderType && (typeNames?[t] != null || typeTable[t].DefaultModel > 0))
+                        allTypes.Add(new TypeItem { Type = t, Name = typeNames?[t] });
             maps = g.Maps();
             MapBox.ItemsSource = maps;
             var pick = maps.FirstOrDefault(m => m.Number == mapNumber) ?? maps.FirstOrDefault(m => m.Number == 9) ?? maps.FirstOrDefault();
@@ -161,6 +179,7 @@ namespace U9Editor.App
             editor.Models = modelScene;
             Select(null);
             UpdateTitle();
+            RefreshTypeList();
             View.FrameMap();
             if (lookAfterLoad is { } look) { View.LookAt(look.X, look.Row, 30); lookAfterLoad = null; }
             MapInfo.Text = $"{terrain.Width}x{terrain.Height} points, {terrain.Chunks.Count} chunks, water at height {terrain.WaterHeight}, " +
@@ -195,6 +214,8 @@ namespace U9Editor.App
                 var nf = LoadObjectFile("runtime", "nonfixed", number, ObjectFileKind.Nonfixed);
                 editor = new MapEditor(number, fx, nf, SceneObjects.Build(fx, nf, space, typeNames), space, raster);
             }
+            editor.Scripts = triggerScripts;
+            editor.Types = typeTable;
             editor.Changed += OnObjectsChanged;
             View.Editor = editor;       // without it the view cannot start a drag
             currentNonfixed = editor.Nonfixed;
@@ -207,6 +228,14 @@ namespace U9Editor.App
         {
             editors[editor.MapNumber] = editor;
             View.RefreshEdited(touched, structural);
+            // zones, arrivals and scripts make the link list: rebuild it when one of them changed (undo included)
+            if (current != null && (structural || touched.Any(o => o.IsLinkZone || o.IsArrival || o.Source.Type == 1111)))
+            {
+                var keep = LinksList.SelectedItem as LinkItem;
+                ShowLinks(current, View.Objects);
+                if (keep != null && LinksList.ItemsSource is List<LinkItem> items)
+                    LinksList.SelectedItem = items.FirstOrDefault(i => i.Link.Zone == keep.Link.Zone);
+            }
             if (selected != null && selected.Source.Removed) { View.SelectObject(null); }
             else Select(selected);
             UpdateTitle();
@@ -238,11 +267,17 @@ namespace U9Editor.App
             }
             var s = o.Source;
             var ci = System.Globalization.CultureInfo.InvariantCulture;
+            // a zone picked in the view picks its link in the list too
+            if (o.IsLinkZone && LinksList.ItemsSource is List<LinkItem> links && links.FirstOrDefault(l => l.Link.Zone == s) is LinkItem li && LinksList.SelectedItem != li)
+            {
+                LinksList.SelectedItem = li;
+                LinksList.ScrollIntoView(li);
+            }
             ObjectTitle.Text = $"{(o.Kind == ObjectFileKind.Fixed ? "Fixed" : "Nonfixed")} #{o.Id}: {o.Name ?? "(no name)"}, type {s.Type}";
             EditX.Text = (s.MapX / 128.0).ToString("0.###", ci);
             EditRow.Text = (s.MapY / 128.0).ToString("0.###", ci);
             EditZ.Text = s.Z.ToString(ci);
-            EditYaw.Text = MapEditor.Yaw(s.Rotation).ToString("0.#", ci);
+            EditYaw.Text = (Math.Round(MapEditor.Yaw(s.Rotation), 1) + 0.0).ToString("0.#", ci);     // + 0.0: no "-0"
             ObjectDetails.Text = $"flags 0x{s.Flags:X}" + (o.Kind == ObjectFileKind.Nonfixed ? $", link {s.Link}, model {s.Model}" : "") +
                                  (o.Model >= 0 ? $", draws model {o.Model}" : ", no model") + (o.IsLinkZone ? ", map change zone" : "") +
                                  $"\nchunk ({s.ChunkX / 4096}, {s.ChunkY / 4096}), file offset 0x{s.FileOffset:X}" +
@@ -384,10 +419,10 @@ namespace U9Editor.App
             if (mapLinks != null && currentNonfixed != null)
             {
                 mapLinks.Remember(m.Number, currentNonfixed);
-                var zones = new HashSet<int>();
+                var zones = new HashSet<MapObject>();
                 foreach (var l in mapLinks.From(m.Number).OrderBy(l => l.DestinationMap).ThenBy(l => l.Zone.PointX))
                 {
-                    zones.Add(l.Zone.FileOffset);
+                    zones.Add(l.Zone);
                     string dest = maps.FirstOrDefault(e => e.Number == l.DestinationMap)?.Name ?? "?";
                     string where = l.Resolved ? $"({l.Arrival.PointX:F1}, {l.Arrival.PointRow:F1})" : $"link {l.DestinationLink} not found";
                     items.Add(new LinkItem
@@ -397,7 +432,7 @@ namespace U9Editor.App
                                (l.DestinationMap == m.Number ? "  [same map]" : ""),
                     });
                 }
-                foreach (var o in objects.All) o.IsLinkZone = o.Kind == ObjectFileKind.Nonfixed && zones.Contains(o.Source.FileOffset);
+                foreach (var o in objects.All) o.IsLinkZone = o.Kind == ObjectFileKind.Nonfixed && zones.Contains(o.Source);
                 View.RefreshObjects();
             }
             LinksList.ItemsSource = items;
@@ -407,6 +442,9 @@ namespace U9Editor.App
         void OnLinkSelected(object sender, SelectionChangedEventArgs e)
         {
             if (LinksList.SelectedItem is not LinkItem li) return;
+            LinkMap.Text = li.Link.DestinationMap.ToString();
+            LinkNumber.Text = li.Link.DestinationLink.ToString();
+            LinkMarker.Text = li.Link.MarkerType.ToString();
             View.LookAt(li.Link.Zone.PointX, li.Link.Zone.PointRow, 30);
             View.SelectObject(View.Objects?.All.FirstOrDefault(o => o.Source.FileOffset == li.Link.Zone.FileOffset && o.Kind == ObjectFileKind.Nonfixed));
             StatusText.Text = $"trigger {li.Link.TriggerSlot}: {li.Link.Ops}   destination link {li.Link.DestinationLink}, marker type {li.Link.MarkerType}, flags 0x{li.Link.Flags:X2}";
@@ -428,6 +466,138 @@ namespace U9Editor.App
             View.Redraw();
             StatusText.Text = $"Arrived from map {li.Link.SourceMap} at ({a.PointX:F2}, {a.PointRow:F2}), height {a.TerrainHeight:F1}";
         }
+
+        // ---- placing new objects
+
+        void RefreshTypeList()
+        {
+            var here = new Dictionary<int, int>();
+            if (editor != null)
+                foreach (var o in editor.Objects.All)
+                    if (!o.Source.Removed) here[o.Source.Type] = here.TryGetValue(o.Source.Type, out int n) ? n + 1 : 1;
+            foreach (var t in allTypes) t.Here = here.TryGetValue(t.Type, out int n) ? n : 0;
+            OnPlaceSearch(null, null);
+        }
+
+        void OnPlaceSearch(object sender, TextChangedEventArgs e)
+        {
+            string q = PlaceSearch.Text?.Trim() ?? "";
+            IEnumerable<TypeItem> list = allTypes;
+            if (q.Length > 0)
+                list = int.TryParse(q, out int num)
+                    ? allTypes.Where(t => t.Type.ToString().StartsWith(q, StringComparison.Ordinal))
+                    : allTypes.Where(t => t.Name != null && t.Name.Contains(q, StringComparison.OrdinalIgnoreCase));
+            // what the map already has first: those place with the flags the game gave them
+            PlaceList.ItemsSource = list.OrderByDescending(t => t.Here > 0).ThenBy(t => t.Type).Take(2000).ToList();
+        }
+
+        void OnPlace(object sender, RoutedEventArgs e)
+        {
+            if (editor == null) return;
+            if (PlaceList.SelectedItem is not TypeItem t) { StatusText.Text = "Pick a type in the list first."; return; }
+            View.Placing = true;
+            StatusText.Text = $"Click the ground to place {t.Name ?? "type " + t.Type}. Esc cancels.";
+            View.Focus();
+        }
+
+        void OnPlaceAt(TerrainHit hit)
+        {
+            if (editor == null || PlaceList.SelectedItem is not TypeItem t) return;
+            var kind = PlaceKind.SelectedIndex switch { 1 => ObjectFileKind.Fixed, 2 => ObjectFileKind.Nonfixed, _ => editor.KindFor(t.Type) };
+            int mx = (int)Math.Round(hit.World.X * 128), my = (int)Math.Round(View.Space.Row(hit.World.Z) * 128);
+            SceneObject placed = null;
+            Edit(() => placed = editor.Place(kind, t.Type, mx, my, editor.GroundZ(mx, my)));
+            if (placed == null) return;
+            View.SelectObject(placed);
+            RefreshTypeList();
+            StatusText.Text = $"Placed {t.Name ?? "type " + t.Type} ({(kind == ObjectFileKind.Fixed ? "fixed" : "nonfixed")}) at ({mx / 128.0:F2}, {my / 128.0:F2}). Ctrl+Z takes it back.";
+        }
+
+        // ---- editing map links
+
+        bool LinkFields(out int map, out int link, out int marker)
+        {
+            link = marker = 0;
+            bool ok = int.TryParse(LinkMap.Text, out map) & int.TryParse(LinkNumber.Text, out link) & int.TryParse(LinkMarker.Text, out marker);
+            if (!ok || map < 0 || map > 255 || link < 0 || link > 0xFFFF || marker < 0 || marker > 0xFFFF)
+            {
+                StatusText.Text = "Not done: To map is 0-255, Link and Marker 0-65535.";
+                return false;
+            }
+            return true;
+        }
+
+        bool SelectedPoint(out int mx, out int my)
+        {
+            mx = my = 0;
+            if (View.State.SelectedX < 0) { StatusText.Text = "Click a ground point first (the yellow square marks it)."; return false; }
+            mx = View.State.SelectedX * 128 + 64;
+            my = View.State.SelectedRow * 128 + 64;
+            return true;
+        }
+
+        void AfterLinkEdit(SceneObject select)
+        {
+            if (current != null) ShowLinks(current, View.Objects);
+            if (select != null) View.SelectObject(select);
+        }
+
+        void OnLinkFieldsKey(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter && e.Source is TextBox) { OnRetarget(null, null); e.Handled = true; }
+        }
+
+        void OnRetarget(object sender, RoutedEventArgs e)
+        {
+            if (editor == null) return;
+            if (LinksList.SelectedItem is not LinkItem li) { StatusText.Text = "Select a link in the list first."; return; }
+            if (!LinkFields(out int map, out int link, out int marker)) return;
+            var zone = View.Objects?.Of(li.Link.Zone);
+            Edit(() =>
+            {
+                editor.RetargetLink(li.Link, map, link, marker);
+                StatusText.Text = $"The link now goes to map {map}, link {link} (a new script slot; Ctrl+Z takes it back).";
+            });
+            AfterLinkEdit(zone);
+        }
+
+        void OnFreeLink(object sender, RoutedEventArgs e)
+        {
+            if (!int.TryParse(LinkMap.Text, out int map)) { StatusText.Text = "Type the destination map first."; return; }
+            var nf = editors.TryGetValue(map, out var ed) ? ed.Nonfixed : current?.Number == map ? editor?.Nonfixed : LoadObjectFile("runtime", "nonfixed", map, ObjectFileKind.Nonfixed);
+            LinkNumber.Text = MapEditor.FreeLinkIn(nf).ToString();
+            StatusText.Text = $"Link {LinkNumber.Text} is free in map {map}. Put an arrival with it there (New arrival at point).";
+        }
+
+        void OnNewLink(object sender, RoutedEventArgs e)
+        {
+            if (editor == null || mapLinks == null) return;
+            if (!LinkFields(out int map, out int link, out int marker) || !SelectedPoint(out int mx, out int my)) return;
+            // the zone's size and kind come from a zone already in this map (the selected link's if any), else Britannia
+            var template = (LinksList.SelectedItem as LinkItem)?.Link.Zone
+                           ?? mapLinks.From(current.Number).Select(l => l.Zone).FirstOrDefault()
+                           ?? mapLinks.From(9).Select(l => l.Zone).FirstOrDefault(z => z.Map.CanLeaveChunk(z));
+            if (template == null) { StatusText.Text = "Not done: no map change zone to copy."; return; }
+            var seg = template.Map.Data.AsSpan(template.Map.DataStart + template.PropertyOffset, 16).ToArray();
+            SceneObject zone = null;
+            Edit(() => zone = editor.NewLink(template.Raw, seg, mx, my, editor.GroundZ(mx, my), map, link, marker));
+            if (zone == null) return;
+            AfterLinkEdit(zone);
+            StatusText.Text = $"New map change at ({mx / 128.0:F1}, {my / 128.0:F1}) to map {map}, link {link}. It needs an arrival with link {link} there.";
+        }
+
+        void OnNewArrival(object sender, RoutedEventArgs e)
+        {
+            if (editor == null) return;
+            if (!int.TryParse(LinkNumber.Text, out int link) || !int.TryParse(LinkMarker.Text, out int marker)) { StatusText.Text = "Type the link number first."; return; }
+            if (!SelectedPoint(out int mx, out int my)) return;
+            SceneObject arrival = null;
+            Edit(() => arrival = editor.NewArrival(link, mx, my, editor.GroundZ(mx, my), marker));
+            if (arrival == null) return;
+            AfterLinkEdit(arrival);
+            StatusText.Text = $"New arrival (link {link}) at ({mx / 128.0:F1}, {my / 128.0:F1}). Links to this map with link {link} land here.";
+        }
+
 
         string Describe(TerrainHit h, string prefix)
         {
@@ -460,7 +630,8 @@ namespace U9Editor.App
             lastModifiers = e.KeyModifiers;
             // saving works from anywhere, a panel field included; other keys belong to the field while typing
             if (e.Key == Key.S && (e.KeyModifiers & KeyModifiers.Control) != 0) { OnSave(null, null); e.Handled = true; return; }
-            if (e.Source is TextBox || e.Source is ComboBox) return;
+            // fields and lists keep their own keys (End, Delete, Page Up...); the edit and camera keys belong to the view
+            if (e.Source is TextBox || e.Source is ComboBox || e.Source is ListBox || e.Source is ListBoxItem) return;
             if (EditKey(e)) { e.Handled = true; return; }
             if (e.Key == Key.Tab) { TopDownItem.IsChecked = !TopDownItem.IsChecked; OnToggleTopDown(null, null); e.Handled = true; return; }
             View.CameraKey(e);
@@ -483,7 +654,8 @@ namespace U9Editor.App
             switch (e.Key)
             {
                 case Key.Escape:
-                    if (View.IsDraggingObject) { View.CancelDrag(); StatusText.Text = "Put back."; }
+                    if (View.Placing) { View.Placing = false; StatusText.Text = "Not placed."; }
+                    else if (View.IsDraggingObject) { View.CancelDrag(); StatusText.Text = "Put back."; }
                     else View.SelectObject(null);
                     return true;
                 case Key.Delete: OnDelete(null, null); return true;

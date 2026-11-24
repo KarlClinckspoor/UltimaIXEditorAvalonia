@@ -153,7 +153,7 @@ namespace U9Editor.App
             float depth = terrainHit.Hit ? Vector3.Distance(Camera.Eye, terrainHit.World) : float.PositiveInfinity;
             var vp = Camera.View * Camera.Projection((float)(Bounds.Width / Math.Max(1, Bounds.Height)));
             var marker = objects.Pick(vp, Camera.Eye, (float)p.X, (float)p.Y, (float)Bounds.Width, (float)Bounds.Height, 7f, depth,
-                o => KindShown(o) && (!ModelsDrawn || o.IsLinkZone));
+                o => KindShown(o) && (!ModelsDrawn || o.IsLinkZone || o.IsArrival));
             if (marker == null) return model;
             if (model == null) return marker;
             return Vector3.Dot(marker.World - origin, dir) <= modelT + 0.5f ? marker : model;
@@ -169,6 +169,10 @@ namespace U9Editor.App
         }
 
         // ---- editing
+
+        /// <summary>The next click on the ground places an object (<see cref="PlaceAt"/>) instead of selecting.</summary>
+        public bool Placing { get; set; }
+        public event Action<TerrainHit> PlaceAt;
 
         /// <summary>The map's editing session (null: nothing can be moved).</summary>
         public MapEditor Editor { get; set; }
@@ -414,6 +418,12 @@ namespace U9Editor.App
             if (dropped != null)
             {
                 ObjectDragged?.Invoke(dropped, dragX, dragY, dragZ);
+                return;
+            }
+            if (click && Placing)
+            {
+                var ph = PickAt(at);
+                if (ph.Hit) { Placing = false; PlaceAt?.Invoke(ph); }
                 return;
             }
             if (click)

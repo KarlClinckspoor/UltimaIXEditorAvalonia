@@ -263,7 +263,7 @@ namespace U9Editor.Render
                 {
                     slots[o.Id] = k / 5;
                     f[k++] = o.World.X; f[k++] = o.World.Y; f[k++] = o.World.Z;
-                    f[k++] = o.Kind == U9.Formats.Objects.ObjectFileKind.Fixed ? 0 : o.IsLinkZone ? 2 : 1;
+                    f[k++] = o.Kind == U9.Formats.Objects.ObjectFileKind.Fixed ? 0 : o.IsLinkZone ? 2 : o.IsArrival ? 3 : 1;
                     f[k++] = o.Id;
                 }
             }
