@@ -83,6 +83,29 @@ Copy-Item "$env:TEMP\fixed.4.mine" gamedata\static\fixed.4 -Force
 Remove-Item gamedata\static\fixed.4.orig
 ```
 
+## Test in the game itself
+
+`tools/game-test.ps1` puts a patched U9GL into `gamedata/` so a new game starts at a map point, flying (through
+walls and ground) and invulnerable, using the game's own developer cheats. It needs the U9GL clone at
+`../u9gl-src` on branch `spawn-cheats`, built with MSYS2's 32-bit GCC (`cd ../u9gl-src/u9gl && ./build.sh`).
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/game-test.ps1 -Map 9 -X 467 -Row 505 -Run
+# ...Esc three times skips the intro; U9GL logs "CONSOLE start: arrived ..." to %TEMP%\u9log.txt
+powershell -ExecutionPolicy Bypass -File tools/game-test.ps1 -Uninstall
+```
+
+- The game draws in U9GL's own 1280 x 960 window at 0,0. Desktop captures of it come out white or black: press
+  **Ctrl+P** in the game (U9GL saves `gamedata/u9-<n>-after.png`; move it out of the game folder afterwards).
+- Keys reach the game with `keybd_event` (scan codes from `MapVirtualKey`); hold Ctrl down around the key for
+  combinations. The game draws its own mouse cursor, so `SetCursorPos` clicks miss: use keys (Enter accepts the
+  quit dialog after Ctrl+X).
+- When another window takes the focus the game minimises and U9GL hides its window: `ShowWindow(game, 9)` and
+  `SetForegroundWindow` bring both back.
+- Without U9GL, the same cheats work from the key map: under `[CHEAT COMMANDS]` in `gamedata/default.kmp`,
+  `ctrl+y = toggle_avatar_fly` (checked: he flies through the house wall), `ctrl+u = toggle_avatar_invulnerable`.
+- Always `-Uninstall` afterwards, and put back any `default.kmp` edit: the game folder is the user's copy.
+
 ## Run (human path)
 
 `dotnet run --project src/U9Editor.App -- --gamedata gamedata --map 9` opens the window; close it to stop.
