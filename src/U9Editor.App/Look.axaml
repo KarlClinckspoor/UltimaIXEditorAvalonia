@@ -25,6 +25,9 @@
       <x:Double x:Key="TextControlThemeMinHeight">22</x:Double>
       <Thickness x:Key="TextControlThemePadding">5,2,5,3</Thickness>
       <Thickness x:Key="FlyoutContentThemePadding">6</Thickness>
+      <x:Double x:Key="ExpanderMinHeight">26</x:Double>
+      <Thickness x:Key="ExpanderHeaderPadding">8,0</Thickness>
+      <Thickness x:Key="ExpanderContentPadding">6,4</Thickness>
       <Thickness x:Key="ToolTipBorderThemePadding">6,3,6,4</Thickness>
       <CornerRadius x:Key="ControlCornerRadius">2</CornerRadius>
       <CornerRadius x:Key="OverlayCornerRadius">2</CornerRadius>

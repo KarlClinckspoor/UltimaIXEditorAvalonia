@@ -72,6 +72,7 @@ namespace U9Editor.App
             SceneClock.Text = $"0.0 / {scene.TotalMs / 1000.0:0.0} s";
             var starter = editor?.Objects.Of(scene.Starter);
             if (starter != null) View.SelectObject(starter);
+            ShowScript(scene.StarterSlot, $"Script {scene.StarterSlot}: the scene's start ({CameraPath.ScriptName(scene.StarterScript)} of type {scene.Starter.Type} link {scene.Starter.Link})");
             StatusText.Text = $"Starts from {CameraPath.ScriptName(scene.StarterScript)} (script {scene.StarterSlot}: {string.Join(" ", triggerScripts[scene.StarterSlot].Select(o => o.ToString()))}) of the selected object.";
         }
 
@@ -90,6 +91,7 @@ namespace U9Editor.App
             ShotInfo.Text = $"Camera point link {s.Point.Link}: {s.Point.Pose}. Sent by op {s.OpIndex} of script {s.Slot} " +
                             $"(of type {s.From.Type} link {s.From.Link}; {users} object{(users == 1 ? "" : "s")} run{(users == 1 ? "s" : "")} that script)" +
                             (s.Also.Length > 0 ? $"; the script also does {s.Also}" : "") + ".";
+            ShowScript(s.Slot, $"Script {s.Slot}: sends the camera to point {s.Point.Link} (op {s.OpIndex}; run by type {s.From.Type} link {s.From.Link})");
             if (sceneTimer == null)
             {
                 s.Point.Pose.ApplyTo(View.Camera);
@@ -135,6 +137,96 @@ namespace U9Editor.App
             Edit(() => editor.SetCameraPoint(so, new CameraPose(c.Target, c.Yaw, c.Pitch, c.Distance)));
             ShowScenes();
             StatusText.Text = $"Camera point {it.Shot.Point.Link} put where the view is. Ctrl+Z takes it back.";
+        }
+
+        // ---- scripts and new scenes
+
+        int scriptSlot;
+
+        void ShowScript(int slot, string header)
+        {
+            scriptSlot = slot;
+            ScriptHeader.Text = header;
+            ScriptText.Text = triggerScripts != null && slot > 0 ? TriggerScripts.Format(triggerScripts[slot]) : "";
+        }
+
+        void OnScriptReload(object sender, RoutedEventArgs e) { if (scriptSlot > 0) ShowScript(scriptSlot, ScriptHeader.Text); }
+
+        void OnScriptApply(object sender, RoutedEventArgs e)
+        {
+            if (editor == null || scriptSlot <= 0) { StatusText.Text = "Pick a scene or a move first."; return; }
+            TriggerOp[] ops;
+            try { ops = TriggerScripts.Parse(ScriptText.Text); }
+            catch (FormatException ex) { StatusText.Text = "Script not applied: " + ex.Message; return; }
+            int slot = scriptSlot;
+            string header = ScriptHeader.Text;
+            Edit(() => editor.SetScriptOps(slot, ops));
+            UpdateTitle();
+            ShowScript(slot, header);
+            StatusText.Text = $"Script {slot}: {ops.Length - 1} ops. Ctrl+Z takes it back, Ctrl+S saves TRIGGERS.FLX.";
+        }
+
+        CameraPose ViewPose() { var c = View.Camera; return new CameraPose(c.Target, c.Yaw, c.Pitch, Math.Max(c.Distance, 0.07f)); }
+
+        /// <summary>A trigger zone to copy (record and property segment): one on this map, else on Britannia.</summary>
+        bool ZoneTemplate(out byte[] record, out byte[] segment)
+        {
+            record = segment = null;
+            bool ok(MapObject z) => z.Type == 1111 && z.Map.PropertiesOf(z).Any(p => p.Id == PropertySegment.OoTrigger) && z.Map.PropertiesOf(z).Any(p => p.Id == PropertySegment.TriggerArea);
+            var z = editor?.Nonfixed?.Objects.FirstOrDefault(o => !o.Removed && ok(o))
+                    ?? mapLinks?.From(9).Select(l => l.Zone).FirstOrDefault(ok);
+            if (z == null) { StatusText.Text = "Not done: no trigger zone to copy."; return false; }
+            record = z.Raw;
+            segment = z.Map.Data.AsSpan(z.Map.DataStart + z.PropertyOffset, 16).ToArray();
+            return true;
+        }
+
+        void AfterSceneMade(SceneObject zone, string what)
+        {
+            UpdateTitle();
+            ShowScenes();
+            if (zone != null && ScenesList.ItemsSource is List<SceneItem> items && items.FirstOrDefault(i => i.Path.Starter == zone.Source) is SceneItem it)
+                ScenesList.SelectedItem = it;
+            StatusText.Text = what + " Ctrl+Z takes it back; Ctrl+S saves the objects and TRIGGERS.FLX.";
+        }
+
+        void OnSceneNew(object sender, RoutedEventArgs e)
+        {
+            if (editor == null || !SelectedPoint(out int mx, out int my) || !ZoneTemplate(out var rec, out var seg)) return;
+            double.TryParse(ShotSeconds.Text?.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double sec);
+            int half = sec > 0 ? (int)Math.Round(sec * 2) : 4;
+            SceneObject zone = null;
+            var pose = ViewPose();
+            Edit(() => zone = editor.NewScene(rec, seg, mx, my, editor.GroundZ(mx, my), pose, half));
+            if (zone != null) AfterSceneMade(zone, $"New scene: walking into the zone at ({mx / 128.0:F1}, {my / 128.0:F1}) shows this view for {half / 2.0:0.#} s.");
+        }
+
+        void OnSceneAddMove(object sender, RoutedEventArgs e)
+        {
+            if (editor == null || scene == null) { StatusText.Text = "Pick a scene first."; return; }
+            if (!double.TryParse(ShotSeconds.Text?.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double sec) || sec <= 0) sec = 3;
+            var move = CameraMove.Make((int)Math.Round(sec * 2), ShotGlide.IsChecked != false, ShotStraight.IsChecked == true, false, false, false);
+            var keep = scene;
+            var pose = ViewPose();
+            Edit(() => editor.AddSceneMove(keep, pose, move));
+            AfterSceneMade(editor.Objects.Of(keep.Starter), $"Move added: {move} to a new camera point where the view is.");
+        }
+
+        void OnSceneOrbit(object sender, RoutedEventArgs e)
+        {
+            if (editor == null || selected == null) { StatusText.Text = "Select the object to circle first (its click also sets the zone's ground point)."; return; }
+            var ci = CultureInfo.InvariantCulture;
+            if (!float.TryParse(OrbitRadius.Text?.Replace(',', '.'), NumberStyles.Float, ci, out float r) || r <= 0 ||
+                !int.TryParse(OrbitHeight.Text, out int h) || !int.TryParse(OrbitCount.Text, out int n) ||
+                !float.TryParse(OrbitSeconds.Text?.Replace(',', '.'), NumberStyles.Float, ci, out float lap) || lap <= 0)
+            { StatusText.Text = "Orbit: radius (points), height (object units), points and lap seconds, as numbers."; return; }
+            if (!SelectedPoint(out int mx, out int my) || !ZoneTemplate(out var rec, out var seg)) return;
+            var o = selected;
+            // the middle of its model, else where it stands
+            int cz = o.Model >= 0 ? (int)Math.Round(o.BoundCentre.Y * MapSpace.HeightUnitsPerPoint * 4) : o.Source.Z;
+            SceneObject zone = null;
+            Edit(() => zone = editor.NewOrbitScene(rec, seg, mx, my, editor.GroundZ(mx, my), (float)o.Source.PointX, (float)o.Source.PointRow, cz, r, h, n, lap));
+            if (zone != null) AfterSceneMade(zone, $"Orbit scene round {o.Name ?? "type " + o.Source.Type}: {n} points, {r:0.#} points out, a {lap:0.#} s lap, started by the zone at ({mx / 128.0:F1}, {my / 128.0:F1}).");
         }
 
         // ---- playing

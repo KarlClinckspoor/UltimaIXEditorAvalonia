@@ -83,7 +83,7 @@ namespace U9Editor.App
             View.SelectionChanged += () => { if (View.Selection.Count > 1) Select(selected); };
             View.FollowTerrain = true;
             View.PlaceAt += OnPlaceAt;
-            ApplyTheme(Program.ThemeAtStart ?? settings.Theme);
+            ApplyTheme(Program.ThemeAtStart ?? settings.Theme, remember: Program.ThemeAtStart == null);
             View.ModeChanged += ShowMode;
             View.FlyChanged += ShowCamera;
             View.ObjectsTurning += d => StatusText.Text = $"turning {d:0}°   (let go to keep it, Esc puts it back)";
@@ -852,13 +852,13 @@ namespace U9Editor.App
 
         // ---- the theme (Look.axaml holds both schemes)
 
-        void ApplyTheme(string name)
+        void ApplyTheme(string name, bool remember = true)
         {
             bool dark = string.Equals(name, "Dark", StringComparison.OrdinalIgnoreCase);
             if (Application.Current != null) Application.Current.RequestedThemeVariant = dark ? Avalonia.Styling.ThemeVariant.Dark : Avalonia.Styling.ThemeVariant.Light;
             ThemeLightItem.IsChecked = !dark;
             ThemeDarkItem.IsChecked = dark;
-            settings.Theme = dark ? "Dark" : "Light";
+            if (remember) settings.Theme = dark ? "Dark" : "Light";      // --theme is for one run
         }
 
         void OnThemeLight(object sender, RoutedEventArgs e) { ApplyTheme("Light"); settings.Save(); }

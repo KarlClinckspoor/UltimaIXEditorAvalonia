@@ -9,7 +9,8 @@ It reads and writes the game's own files, so changes show up in the real game.
 ## What it does
 
 - **3D view of every map**: terrain with its textures and transitions, water, objects with their models,
-  trigger zones and map links. Orbit, pan, fly with W/A/S/D, or a top-down map view.
+  trigger zones and map links. An orbit camera, a fly camera (V), or a top-down map view. A tool bar beside the
+  view picks what a drag does (Select, Move, Rotate, Place, Terrain), so looking round never moves anything.
 - **Objects**: select, move (keeping height above the ground), turn, raise, copy, delete and place new ones of
   any of the game's types, with undo and redo. Saves `fixed.N` and `nonfixed.N`.
 - **Map links**: retarget a door or cave to another map and arrival point, add new links and arrivals. Saves
@@ -17,8 +18,11 @@ It reads and writes the game's own files, so changes show up in the real game.
 - **Terrain**: brushes to raise, lower, smooth, flatten, roughen, paint textures (with the map's own blended
   edges) and cut holes; objects on the ground follow it. Change the sea level. Saves `terrain.N`.
 - **Scenes**: the game's in-engine scenes (camera moves chained by trigger scripts), listed per map and played
-  in the 3D view; change a move's duration and style, or put a camera point where the view is. Saves
-  `TRIGGERS.FLX` and `nonfixed.N`.
+  in the 3D view; change a move's duration and style, put a camera point where the view is, edit any script as
+  text, and make new scenes: a trigger zone and camera points from the view, move by move, or a camera circling an
+  object. Saves `TRIGGERS.FLX` and `nonfixed.N`.
+- **Look**: a light, compact, classic theme by default (framed lists and tabs, gradient buttons) and a dark one
+  (View > Theme).
 - **Formats**: readers and writers for FLX archives, terrain, object files, types, models and bitmaps, tested
   for byte-identical round trips over every shipped file.
 - Saving keeps each original file beside it as `.orig` the first time.
@@ -85,10 +89,18 @@ dotnet src/U9Editor.Cli/bin/Debug/net10.0/u9.dll terrain-info gamedata/static/te
 dotnet run --project src/U9Editor.App -- --gamedata gamedata --map 9
 ```
 
-Editor options: `--gamedata PATH`, `--map N`, `--size WxH`, `--top-down`, `--screenshot out.png` (saves the first
-frame and quits). In the view: left drag orbits, middle or Shift+drag pans, wheel zooms, W/A/S/D move, Q/E turn,
-R/F raise and lower, Tab toggles the top-down map, Home frames the map, click selects a point or object (shown in
-the status bar). The Links panel lists the current map's map changes; double-click goes to where one leads.
+Editor options: `--gamedata PATH`, `--map N`, `--size WxH`, `--top-down`, `--theme Light|Dark`, `--screenshot
+out.png` (saves the first 3D frame and quits), `--window-shot out.png` (the whole window, panels included, rendered
+off screen, then quits). In the view: left drag orbits, middle or Shift+drag pans, wheel zooms, W/A/S/D move, Q/E
+turn, R/F raise and lower, Tab toggles the top-down map, Home frames the map, click selects a point or object (shown
+in the status bar). The Links panel lists the current map's map changes; double-click goes to where one leads.
+
+The tool bar left of the view sets what a left drag does: Select (1, the default: clicks select, Ctrl+click and
+Ctrl+drag add to the selection, drags only move the camera), Move (2: drag the selection), Rotate (3: drag sideways
+on the selection to turn it, a group about its middle), Place (4: every click on the ground places the type picked
+in the Place tab, until Esc) and Terrain (5 or B: the brush). Below them, Orbit and Fly pick the camera (V switches):
+flying, drags look round, W/A/S/D fly where you look, R/F go up and down, the wheel steps forward and Shift is
+faster; the speed follows the height above the ground. View > Theme switches Light and Dark (remembered).
 
 Placing objects: the Place object tab lists every type (those already on the map first, with how many); pick one,
 press Place and click the ground. The new record copies flags and model from one of its kind on the map, or failing that on any of the
@@ -172,6 +184,17 @@ current view (the point looked at, heading, pitch and distance). Both are undo s
 command line, `u9 scenes <gamedata> <map>` lists the scenes and `u9 camera-point <gamedata> <map> <link> <x> <row>
 <z> <heading> <pitch> [distance]` moves a camera point; `u9 objects <gamedata> <map> [fixed|nonfixed] [--type n]
 [--props]` lists a map's objects.
+
+Making scenes (Scenes tab, Make scenes): New scene here puts a trigger zone (a copy of one of the map's zones) at
+the selected ground point; walking into it cuts the camera to a new camera point where the view is now. Add move
+from view appends a new camera point where the view is, reached with the seconds, Glide and Straight of the move
+fields. Orbit the selected object makes a scene that circles it (radius in points, height in object units above
+its middle, the number of camera points and the seconds for a lap), each point looking at its middle, in straight
+glides; its zone goes at the clicked ground point. The Script section shows the selected move's script (or the
+scene's start) as text, one op a line (`op A B ; what it does`, the op in hex), and Apply script writes it back.
+New scenes use new script slots and new objects (links above the map's highest), so shipped scenes stay as they
+are; each is one undo step. `u9 orbit-scene <gamedata> <map> <x> <row> <z> <radius> <height> <points> <seconds>
+<zone x> <zone row> [<zone z>]` does the same from the command line.
 
 Start options for scripted pictures: `--look X,ROW --distance D --pitch P --yaw Y`, and `--scene N --scene-time S`
 for the view of the map's scene N (as the Scenes tab lists them) at S seconds.

@@ -223,6 +223,41 @@
                 </StackPanel>
                 <TextBlock Text="Moves" FontWeight="SemiBold" Margin="0,4,0,0" />
               </StackPanel>
+              <StackPanel DockPanel.Dock="Bottom" Spacing="3" Margin="0,4,0,0">
+                <Expander x:Name="ScriptExpander" Header="Script" FontSize="12" HorizontalAlignment="Stretch">
+                  <StackPanel Spacing="3">
+                    <TextBlock x:Name="ScriptHeader" FontSize="11" TextWrapping="Wrap" Text="Pick a scene or a move to see its script." />
+                    <TextBox x:Name="ScriptText" FontFamily="Cascadia Mono, Consolas, monospace" FontSize="11" AcceptsReturn="True" Height="130"
+                             TextWrapping="NoWrap" ToolTip.Tip="One op a line: the op in hex (low byte the command, high byte 0x10 + the link offset), A and B in decimal; after ';' a comment. The end is added." />
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <Button Content="Apply script" Click="OnScriptApply" FontSize="12" ToolTip.Tip="Writes the ops into the script (one undo step); every object running it changes" />
+                      <Button Content="Show again" Click="OnScriptReload" FontSize="12" />
+                    </StackPanel>
+                  </StackPanel>
+                </Expander>
+                <Expander Header="Make scenes" FontSize="12" HorizontalAlignment="Stretch">
+                  <StackPanel Spacing="3">
+                    <WrapPanel>
+                      <Button Content="New scene here" Click="OnSceneNew" FontSize="12" Margin="0,0,4,4"
+                              ToolTip.Tip="A trigger zone at the selected ground point; walking into it cuts the camera to a new camera point where the view is now, for the seconds above (Add move goes on from there)" />
+                      <Button Content="Add move from view" Click="OnSceneAddMove" FontSize="12" Margin="0,0,4,4"
+                              ToolTip.Tip="A new camera point where the view is, reached after the scene's last move with the seconds, Glide and Straight above" />
+                    </WrapPanel>
+                    <Grid ColumnDefinitions="Auto,*,Auto,*,Auto,*,Auto,*" >
+                      <TextBlock Text="Radius" VerticalAlignment="Center" FontSize="12" Margin="0,0,3,0" />
+                      <TextBox x:Name="OrbitRadius" Grid.Column="1" Text="5" FontSize="12" Margin="0,0,5,0" ToolTip.Tip="Points from the object's middle" />
+                      <TextBlock Text="Height" Grid.Column="2" VerticalAlignment="Center" FontSize="12" Margin="0,0,3,0" />
+                      <TextBox x:Name="OrbitHeight" Grid.Column="3" Text="300" FontSize="12" Margin="0,0,5,0" ToolTip.Tip="Object units above its middle (128 = one point)" />
+                      <TextBlock Text="Points" Grid.Column="4" VerticalAlignment="Center" FontSize="12" Margin="0,0,3,0" />
+                      <TextBox x:Name="OrbitCount" Grid.Column="5" Text="12" FontSize="12" Margin="0,0,5,0" ToolTip.Tip="Camera points round the lap (3 to 64)" />
+                      <TextBlock Text="Lap s" Grid.Column="6" VerticalAlignment="Center" FontSize="12" Margin="0,0,3,0" />
+                      <TextBox x:Name="OrbitSeconds" Grid.Column="7" Text="24" FontSize="12" ToolTip.Tip="Seconds for the whole circle" />
+                    </Grid>
+                    <Button Content="Orbit the selected object" Click="OnSceneOrbit" FontSize="12"
+                            ToolTip.Tip="A scene that circles the selected object, always looking at it; its trigger zone goes at the selected ground point (where you clicked)" />
+                  </StackPanel>
+                </Expander>
+              </StackPanel>
               <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,6,0,0" x:Name="ShotEdit" IsEnabled="False">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <TextBlock Text="Seconds" VerticalAlignment="Center" FontSize="12" />

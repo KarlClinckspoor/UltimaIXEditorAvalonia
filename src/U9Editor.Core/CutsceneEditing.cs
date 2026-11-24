@@ -51,6 +51,20 @@ namespace U9Editor.Core
             });
         }
 
+        /// <summary>Replaces a script's ops (one undo step); every object running that script gets them.</summary>
+        public void SetScriptOps(int slot, TriggerOp[] ops)
+        {
+            if (Scripts == null) throw new InvalidOperationException("No TRIGGERS.FLX");
+            if (slot <= 0) throw new ArgumentOutOfRangeException(nameof(slot));
+            var before = Scripts.IsUsed(slot) ? Scripts[slot] : Array.Empty<TriggerOp>();
+            if (before.SequenceEqual(ops)) return;
+            Scripts.Set(slot, ops);
+            undo.Add(new Step { Description = $"script {slot}", Scripts = new() { (slot, before, ops) } });
+            redo.Clear();
+            scriptVersion++;
+            ScriptsEdited?.Invoke();
+        }
+
         void RaiseScriptsEdited() => ScriptsEdited?.Invoke();
     }
 }

@@ -68,11 +68,23 @@ Map 9 is Britannia (Lord British's throne at `--look 502,554`; the real city of 
 named "Moonglow", is a development leftover the game does not use: handy for UI tests because it is small and
 quick to load, but check anything game-facing on Britannia.
 
-Layout at `--size 1400x900` (window 1416 x 939 at 100% scaling): the 3D view is x 8-1028, y 104-905; the
-Selected object panel is x 1030-1416, y 105-285 (X field at 1120,165); the status bar is y 905-935, with the
-last edit message in yellow on the left and the hover readout after it.
+Layout at `--size 1400x900` (window 1416 x 939 at 100% scaling) since the tool bar and the compact theme
+(2026-11-24), read from a `--window-shot` (client pixels; window pixels are about 8 more in x and 31 more in y, so
+check with a full `shot` before clicking): the tool bar is x 0-37 (Select, Move, Rotate, Place, Terrain at y 72,
+104, 137, 170, 202; Orbit and Fly at 244, 276); the 3D view x 37-1020, y 55-878; the Selected object panel x
+1022-1400 from y 60 (X field at 1110,110); the side tabs at y 219 with nothing selected (Links 1050, Place 1099,
+Contents 1161, Find 1220, Scenes 1273, Terrain 1334); the status bar y 880-900. The figures elsewhere in this file
+(tabs at y 306, the Scenes rows) are from the older, roomier layout: measure again before relying on them.
+A drag on an object only moves it in Move mode (key 2); in the default Select mode it orbits.
 
 ## Screenshot without the mouse
+
+The whole window, panels and all, without touching the desktop (the 3D frame is drawn over the compass):
+
+```powershell
+Start-Process -Wait -FilePath src\U9Editor.App\bin\Debug\net10.0\U9Editor.exe -ArgumentList "--gamedata gamedata --map 14 --size 1400x900 --theme Dark --scene 4 --scene-time 9 --window-shot $env:TEMP\u9_window.png"
+```
+
 
 For a picture of the 3D view only (no menus or panels), the editor can save its first frame and quit:
 
@@ -219,6 +231,10 @@ About 600 tests, half a minute. They need `gamedata/` (or `U9_GAMEDATA`) and ski
 - **Waiting:** `launch` waits 10 s; Britannia (33k objects, 2,170 models) is ready in about 8. Edits redraw within
   half a second; sleep ~500 ms before a `shot`.
 - **The pink tint** on a selected model is the selection highlight, not a texture fault.
+- **A locked screen.** After some 15 minutes away Windows locks the session: `shot` returns the wallpaper,
+  `CopyFromScreen` throws "The handle is invalid", keys sent to the game never arrive (its log shows the foreground
+  as `Windows.UI.Core.CoreWindow`), and Git Bash may refuse to start (EPERM). Use `--window-shot` / `--screenshot`
+  for the editor and leave in-game checks until the user is back.
 
 ## Troubleshooting
 

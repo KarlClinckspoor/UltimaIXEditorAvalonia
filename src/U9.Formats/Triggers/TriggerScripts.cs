@@ -41,6 +41,35 @@ namespace U9.Formats.Triggers
         }
         public const int DefaultRange = 0x500;
         public TriggerOp WithB(int b) => new TriggerOp(Op, A, (ushort)b);
+        /// <summary>The command's meaning as far as it is known (null when not).</summary>
+        public string Name => Command switch
+        {
+            Activate => "activate",
+            SetLink => "set link",
+            ChangeMap => "change map",
+            Range => "range",
+            0x28 => "run the objects' script B & 3",
+            End => "end",
+            _ => null,
+        };
+
+        /// <summary>What the op does, for a comment: its name, the type and link it reaches, and what B means.</summary>
+        public string Describe()
+        {
+            string link = UsesLink ? $"link {(LinkOffset >= 0 ? "+" : "")}{LinkOffset}" : "any link";
+            string type = TargetType == AnyType ? "any type" : $"type {TargetType}";
+            return Command switch
+            {
+                End => "end",
+                SetLink => $"set link {B + LinkOffset}",
+                Range => $"range {RangeUnits / 128.0:0.#} points",
+                ChangeMap => $"change map to {((B & 0xFF) == 0 ? "this map" : "map " + (B & 0xFF))}, arrival type {A}",
+                Activate when TargetType == 2218 => $"activate camera point ({link}): {new CameraMove(B)}",
+                Activate => $"activate {type}, {link}, B {B}",
+                0x28 => $"{type}, {link} run script {B & 3} (OO 1, OO 2, SF 1, SF 2)",
+                _ => $"op 0x{Command:X2} on {type}, {link}, B {B}",
+            };
+        }
         public override string ToString() => $"{Op:x4}:{A:x},{B:x}";
     }
 
@@ -131,6 +160,47 @@ namespace U9.Formats.Triggers
             int max = 0;
             foreach (int k in scripts.Keys) max = Math.Max(max, k);
             return max + 1;
+        }
+
+        /// <summary>
+        /// A script as text, one op a line: the op in hex, A and B in decimal, and a comment (after ';') saying what it
+        /// does. The closing end op is left out; <see cref="Parse"/> adds it back.
+        /// </summary>
+        public static string Format(IEnumerable<TriggerOp> ops)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var op in ops)
+            {
+                if (op.Command == TriggerOp.End) break;
+                sb.Append($"{op.Op:X4} {op.A,5} {op.B,5}   ; {op.Describe()}\n");
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>Reads <see cref="Format"/>'s text back: blank lines and comments are skipped, an end op is added.</summary>
+        public static TriggerOp[] Parse(string text)
+        {
+            var list = new List<TriggerOp>();
+            int n = 0;
+            foreach (var raw in (text ?? "").Split('\n'))
+            {
+                n++;
+                string line = raw;
+                int c = line.IndexOf(';');
+                if (c >= 0) line = line.Substring(0, c);
+                line = line.Trim();
+                if (line.Length == 0) continue;
+                var parts = line.Split(new[] { ' ', '\t', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length != 3) throw new FormatException($"line {n}: three numbers wanted (op in hex, A, B)");
+                if (!ushort.TryParse(parts[0], System.Globalization.NumberStyles.HexNumber, null, out ushort op)) throw new FormatException($"line {n}: '{parts[0]}' is not a hex op");
+                if (!ushort.TryParse(parts[1], out ushort a)) throw new FormatException($"line {n}: A '{parts[1]}' is not 0 to 65535");
+                if (!ushort.TryParse(parts[2], out ushort b)) throw new FormatException($"line {n}: B '{parts[2]}' is not 0 to 65535");
+                if ((op & 0xFF) == TriggerOp.End) break;
+                list.Add(new TriggerOp(op, a, b));
+            }
+            if (list.Count > 84) throw new FormatException("a script holds at most 84 ops (the game reads 85 with the end)");
+            list.Add(new TriggerOp(0x1000 | TriggerOp.End, 0, 0));
+            return list.ToArray();
         }
 
         /// <summary>The usual map change script: set the arrival link, change map, end.</summary>

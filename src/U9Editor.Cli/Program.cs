@@ -27,6 +27,7 @@ namespace U9Editor.Cli
                     case "model-export" when args.Length >= 4: return ModelExport(args);
                     case "model-info" when args.Length == 2: return ModelInfo(args[1]);
                     case "model-import" when args.Length == 4: return ModelImport(args[1], int.Parse(args[2]), args[3]);
+                    case "orbit-scene" when args.Length == 12 || args.Length == 13: return OrbitScene(args);
                     case "camera-point" when args.Length >= 9: return CameraPointSet(args);
                     case "scenes" when args.Length == 3: return Scenes(args[1], int.Parse(args[2]));
                     case "objects" when args.Length >= 3: return Objects(args[1], int.Parse(args[2]), args.Skip(3).ToArray());
@@ -66,7 +67,11 @@ namespace U9Editor.Cli
                                              put a camera point (type 2218, by link) where a camera should be: the
                                              point looked at (point x, row; z in object units), heading clockwise
                                              from north, pitch down, distance in object units; writes
-                                             runtime/nonfixed.N (first time keeping .orig)");
+                                             runtime/nonfixed.N (first time keeping .orig)
+  u9 orbit-scene <gamedata> <map> <x> <row> <z> <radius> <height> <points> <seconds> <zone x> <zone row> [<zone z>]
+                                             a scene circling the point (x, row; z object units) at radius points
+                                             and height units above it, started by a new trigger zone; writes
+                                             runtime/nonfixed.N and static/TRIGGERS.FLX (first time keeping .orig)");
             return 2;
         }
 
@@ -153,6 +158,37 @@ namespace U9Editor.Cli
                             Console.WriteLine($"      {p}");
                 }
             }
+            return 0;
+        }
+
+        static int OrbitScene(string[] a)
+        {
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            var game = GameFolder.TryOpen(a[1]) ?? throw new IOException("not a game folder: " + a[1]);
+            int map = int.Parse(a[2]);
+            float x = float.Parse(a[3], ci), row = float.Parse(a[4], ci), radius = float.Parse(a[6], ci), seconds = float.Parse(a[9], ci);
+            int z = int.Parse(a[5]), height = int.Parse(a[7]), count = int.Parse(a[8]);
+            int zx = (int)Math.Round(double.Parse(a[10], ci) * 128), zy = (int)Math.Round(double.Parse(a[11], ci) * 128);
+            var opt = new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive };
+            string fxPath = Directory.EnumerateFiles(game.StaticFolder, "fixed." + map, opt).First();
+            string nfPath = Directory.EnumerateFiles(Path.Combine(game.Root, "runtime"), "nonfixed." + map, opt).First();
+            var t = U9.Formats.Terrain.TerrainMap.Load(Directory.EnumerateFiles(game.StaticFolder, "terrain." + map, opt).First());
+            var space = new MapSpace(t.Width, t.Height);
+            var fx = U9.Formats.Objects.ObjectMap.Load(fxPath, U9.Formats.Objects.ObjectFileKind.Fixed);
+            var nf = U9.Formats.Objects.ObjectMap.Load(nfPath, U9.Formats.Objects.ObjectFileKind.Nonfixed);
+            var ed = new MapEditor(map, fx, nf, SceneObjects.Build(fx, nf, space, null), space, new TerrainRaster(t)) { Terrain = t };
+            ed.Scripts = U9.Formats.Triggers.TriggerScripts.Load(Directory.EnumerateFiles(game.StaticFolder, "triggers.flx", opt).First());
+            // a trigger zone to copy: a map change zone of this map or of Britannia
+            bool ok(U9.Formats.Objects.MapObject o) => o.Type == 1111 && o.Map.PropertiesOf(o).Any(p => p.Id == U9.Formats.Objects.PropertySegment.OoTrigger)
+                                                       && o.Map.PropertiesOf(o).Any(p => p.Id == U9.Formats.Objects.PropertySegment.TriggerArea);
+            var zone = nf.Objects.FirstOrDefault(ok) ?? throw new IOException("no trigger zone on this map to copy");
+            var seg = nf.Data.AsSpan(nf.DataStart + zone.PropertyOffset, 16).ToArray();
+            int gz = a.Length > 12 ? int.Parse(a[12]) : ed.GroundZ(zx, zy);     // default: on the terrain
+            var made = ed.NewOrbitScene(zone.Raw, seg, zx, zy, gz, x, row, z, radius, height, count, seconds);
+            var scene = Cutscenes.Find(ed.Nonfixed, ed.Scripts, space).First(p => p.Starter == made.Source);
+            Console.WriteLine($"zone at ({zx / 128.0:0.##}, {zy / 128.0:0.##}) z {gz}: {scene}");
+            foreach (var s in scene.Shots) Console.WriteLine($"   {s}   {s.Point.Pose}");
+            foreach (var w in ed.Save(fxPath, nfPath)) Console.WriteLine("wrote " + w);
             return 0;
         }
 
