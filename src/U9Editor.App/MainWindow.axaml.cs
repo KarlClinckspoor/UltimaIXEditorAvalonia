@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -90,7 +90,7 @@ namespace U9Editor.App
             View.FrameDrawn += OnFrameDrawn;
             AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
             AddHandler(KeyUpEvent, (s, e) => View.CameraKeyUp(e), RoutingStrategies.Tunnel);
-            Opened += (s, e) => OpenAtStart();
+            Opened += (s, e) => { OpenAtStart(); ShowBookmarks(); };
             Closing += OnClosing;
             Closed += (s, e) => { bitmaps?.Dispose(); appearances?.Dispose(); };
         }
@@ -102,7 +102,7 @@ namespace U9Editor.App
                     ?? GameFolder.FindNear(AppContext.BaseDirectory);
             if (g == null)
             {
-                StatusText.Text = "Open the Ultima IX folder (File > Open game folder…): the one holding static/ and runtime/.";
+                StatusText.Text = "Open the Ultima IX folder (File > Open game folderâ€¦): the one holding static/ and runtime/.";
                 return;
             }
             OpenGame(g, Program.GameDataAtStart != null ? Program.MapAtStart : settings.LastMap);
@@ -122,6 +122,7 @@ namespace U9Editor.App
         {
             game = g;
             templates = new ObjectTemplates(g.Root);
+            search = null;
             settings.GameFolder = g.Root;
             bitmaps?.Dispose();
             bitmaps = null;
@@ -148,7 +149,7 @@ namespace U9Editor.App
             MapBox.ItemsSource = maps;
             var pick = maps.FirstOrDefault(m => m.Number == mapNumber) ?? maps.FirstOrDefault(m => m.Number == 9) ?? maps.FirstOrDefault();
             MapBox.SelectedItem = pick;
-            Title = $"U9 Editor — {g.Root}";
+            Title = $"U9 Editor â€” {g.Root}";
         }
 
         void OnMapChanged(object sender, SelectionChangedEventArgs e)
@@ -318,7 +319,7 @@ namespace U9Editor.App
         void UpdateTitle()
         {
             string dirty = editors.Values.Any(e => e.HasChanges) ? " *" : "";
-            Title = $"U9 Editor — {game?.Root}{dirty}";
+            Title = $"U9 Editor â€” {game?.Root}{dirty}";
             UndoItem.Header = editor?.UndoDescription != null ? $"_Undo {editor.UndoDescription}" : "_Undo";
             RedoItem.Header = editor?.RedoDescription != null ? $"_Redo {editor.RedoDescription}" : "_Redo";
         }
@@ -397,7 +398,7 @@ namespace U9Editor.App
 
         void Turn(float degrees)
         {
-            if (Many is { } g) { Edit(() => { editor.TurnGroup(g, degrees); StatusText.Text = $"Turned {g.Count} objects {degrees:0.#}° about their middle. Ctrl+Z takes it back."; }); return; }
+            if (Many is { } g) { Edit(() => { editor.TurnGroup(g, degrees); StatusText.Text = $"Turned {g.Count} objects {degrees:0.#}Â° about their middle. Ctrl+Z takes it back."; }); return; }
             if (selected == null) return;
             var o = selected;
             Edit(() => editor.Rotate(o, MapEditor.Turned(o.Source.Rotation, degrees)));
@@ -521,6 +522,150 @@ namespace U9Editor.App
             View.State.SelectedX = (int)a.PointX; View.State.SelectedRow = (int)a.PointRow;
             View.Redraw();
             StatusText.Text = $"Arrived from map {li.Link.SourceMap} at ({a.PointX:F2}, {a.PointRow:F2}), height {a.TerrainHeight:F1}";
+        }
+
+        // ---- finding objects, going places, bookmarks
+
+        ObjectSearch search;
+
+        void OnFindKey(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter) { OnFind(null, null); e.Handled = true; }
+        }
+
+        void OnFind(object sender, RoutedEventArgs e)
+        {
+            if (editor == null || game == null) return;
+            var q = ObjectQuery.Parse(FindText.Text);
+            if (q.IsEmpty) { FindResults.ItemsSource = null; FindHeader.Text = "Type a name, a type number, #id or link:n, then Enter."; return; }
+            List<FoundObject> found;
+            if (FindAllMaps.IsChecked == true)
+            {
+                search ??= new ObjectSearch(game.Root, typeNames);
+                found = search.AllMaps(q, maps, n => editors.TryGetValue(n, out var ed) ? (ed.Fixed, ed.Nonfixed) : null);
+                // the open map's results know their scene objects, so they can be selected
+                var here = ObjectSearch.InMap(editor.Objects, q);
+                found = found.Where(f => f.Map != editor.MapNumber).ToList();
+                found.InsertRange(0, here.Select(o => Found(o)));
+            }
+            else found = ObjectSearch.InMap(editor.Objects, q).Select(o => Found(o)).ToList();
+            FindResults.ItemsSource = found;
+            int hereCount = found.Count(f => f.Object != null);
+            FindHeader.Text = found.Count == 0 ? "Nothing found." :
+                $"{found.Count} found{(found.Count >= 2000 ? " (the first 2000)" : "")}, {hereCount} on this map. Double-click one to go there.";
+        }
+
+        FoundObject Found(SceneObject o) => new FoundObject
+        {
+            Map = editor.MapNumber, Kind = o.Kind, Type = o.Source.Type, Name = o.Name, Object = o,
+            X = o.Source.MapX / MapSpace.ObjectUnitsPerPoint, Row = o.Source.MapY / MapSpace.ObjectUnitsPerPoint, Z = o.Source.Z,
+        };
+
+        void OnFindGo(object sender, Avalonia.Input.TappedEventArgs e)
+        {
+            if (FindResults.SelectedItem is not FoundObject f) return;
+            if (f.Object != null && f.Map == editor?.MapNumber)
+            {
+                View.LookAt(f.X, f.Row, Math.Min(View.Camera.Distance, 30));
+                View.SelectObject(f.Object);
+                StatusText.Text = $"{f.Name ?? "type " + f.Type} at ({f.X:0.##}, {f.Row:0.##}) z {f.Z}, selected.";
+                return;
+            }
+            GoTo(f.Map, f.X, f.Row, null);
+            StatusText.Text = $"{f.Name ?? "type " + f.Type} on map {f.Map} at ({f.X:0.##}, {f.Row:0.##}) z {f.Z}.";
+        }
+
+        void OnSelectFound(object sender, RoutedEventArgs e)
+        {
+            if (FindResults.ItemsSource is not List<FoundObject> found) return;
+            var here = found.Where(f => f.Object != null && f.Map == editor?.MapNumber && editor.Objects.Of(f.Object.Source) == f.Object && !f.Object.Source.Removed).Select(f => f.Object).ToList();
+            if (here.Count == 0) { StatusText.Text = "None of the results is on this map."; return; }
+            View.SetSelection(here, here[^1]);
+            StatusText.Text = $"Selected {here.Count} objects.";
+        }
+
+        /// <summary>Looks at a point of a map, opening it first if needed; with a bookmark's camera when given.</summary>
+        void GoTo(int map, float x, float row, Bookmark camera)
+        {
+            void Look()
+            {
+                View.LookAt(x, row, camera?.Distance ?? 30);
+                if (camera != null) { View.Camera.Pitch = camera.Pitch; View.Camera.Yaw = camera.Yaw; View.Redraw(); }
+                View.State.SelectedX = (int)x; View.State.SelectedRow = (int)row;
+                View.Redraw();
+            }
+            if (map != current?.Number)
+            {
+                var target = maps?.FirstOrDefault(m => m.Number == map);
+                if (target == null) { StatusText.Text = $"Map {map} has no terrain to show."; return; }
+                lookAfterLoad = (x, row);
+                MapBox.SelectedItem = target;      // loads it (OnMapChanged), then looks
+                if (current?.Number == map && camera != null) Look();
+            }
+            else Look();
+        }
+
+        void OnGotoKey(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter) { OnGoto(null, null); e.Handled = true; }
+        }
+
+        void OnGoto(object sender, RoutedEventArgs e)
+        {
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            var parts = (GotoText.Text ?? "").Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries);
+            var v = parts.Select(p => float.TryParse(p, System.Globalization.NumberStyles.Float, ci, out float f) ? f : float.NaN).ToArray();
+            if ((v.Length != 2 && v.Length != 3) || v.Any(float.IsNaN)) { StatusText.Text = "Go to: x, row (points), or map, x, row."; return; }
+            int map = v.Length == 3 ? (int)v[0] : current?.Number ?? 9;
+            float x = v[^2], row = v[^1];
+            GoTo(map, x, row, null);
+            StatusText.Text = $"Looking at ({x:0.##}, {row:0.##}) on map {map}.";
+        }
+
+        void ShowBookmarks()
+        {
+            settings.Bookmarks ??= Settings.StartingBookmarks();
+            foreach (var b in settings.Bookmarks) b.MapName ??= maps?.FirstOrDefault(m => m.Number == b.Map)?.Name;
+            BookmarkList.ItemsSource = null;
+            BookmarkList.ItemsSource = settings.Bookmarks.ToList();
+        }
+
+        void OnBookmarkGo(object sender, Avalonia.Input.TappedEventArgs e)
+        {
+            if (BookmarkList.SelectedItem is not Bookmark b) return;
+            GoTo(b.Map, b.X, b.Row, b);
+            StatusText.Text = $"Bookmark: {b.Name}.";
+        }
+
+        void OnBookmarkKey(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter) { OnBookmarkAdd(null, null); e.Handled = true; }
+        }
+
+        void OnBookmarkAdd(object sender, RoutedEventArgs e)
+        {
+            if (current == null || View.Space == null) return;
+            var t = View.Camera.Target;
+            string name = string.IsNullOrWhiteSpace(BookmarkName.Text) ? $"{current.Name} {t.X:0}, {View.Space.Row(t.Z):0}" : BookmarkName.Text.Trim();
+            settings.Bookmarks ??= Settings.StartingBookmarks();
+            settings.Bookmarks.Add(new Bookmark
+            {
+                Name = name, Map = current.Number, MapName = current.Name, X = t.X, Row = View.Space.Row(t.Z),
+                Distance = View.Camera.Distance, Pitch = View.Camera.Pitch, Yaw = View.Camera.Yaw,
+            });
+            settings.Save();
+            BookmarkName.Text = "";
+            ShowBookmarks();
+            StatusText.Text = $"Bookmarked \"{name}\".";
+        }
+
+        void OnBookmarkDelete(object sender, RoutedEventArgs e)
+        {
+            if (BookmarkList.SelectedItem is not Bookmark b || settings.Bookmarks == null) return;
+            settings.Bookmarks.Remove(b);
+            settings.Save();
+            ShowBookmarks();
+            StatusText.Text = $"Bookmark \"{b.Name}\" deleted.";
         }
 
         // ---- placing new objects

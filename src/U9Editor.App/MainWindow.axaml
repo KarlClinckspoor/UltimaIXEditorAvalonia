@@ -134,6 +134,34 @@
               <ListBox x:Name="PlaceList" FontSize="12" DoubleTapped="OnPlace" />
             </DockPanel>
           </TabItem>
+          <TabItem Header="Find" FontSize="13">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Top" Spacing="4">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBox x:Name="FindText" Width="230" FontSize="12" Watermark="name, type number, #id, link:n, fixed" KeyDown="OnFindKey"
+                           ToolTip.Tip="All words must match: words in the type's name, a type number, #id of an object here, link:n of a nonfixed object, fixed or nonfixed. Enter searches." />
+                  <CheckBox x:Name="FindAllMaps" Content="All maps" FontSize="12" Click="OnFind" ToolTip.Tip="Search every map's object files (the first time reads them all, a second or two)" />
+                </StackPanel>
+                <TextBlock x:Name="FindHeader" FontSize="11" Opacity="0.7" TextWrapping="Wrap" Text="Double-click a result to go there (and select it on this map)." />
+              </StackPanel>
+              <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,6,0,0">
+                <Button Content="Select all found here" Click="OnSelectFound" FontSize="12" ToolTip.Tip="Selects every result on this map, to move, turn, copy or delete them together" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Go to" VerticalAlignment="Center" FontSize="12" />
+                  <TextBox x:Name="GotoText" Width="150" FontSize="12" Watermark="x, row" KeyDown="OnGotoKey" ToolTip.Tip="A point of this map (as the status bar shows them), or map, x, row" />
+                  <Button Content="Go" Click="OnGoto" FontSize="12" />
+                </StackPanel>
+                <TextBlock Text="Bookmarks" FontWeight="SemiBold" Margin="0,4,0,0" />
+                <ListBox x:Name="BookmarkList" FontSize="12" Height="120" DoubleTapped="OnBookmarkGo" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBox x:Name="BookmarkName" Width="170" FontSize="12" Watermark="name for this view" KeyDown="OnBookmarkKey" />
+                  <Button Content="Add" Click="OnBookmarkAdd" FontSize="12" ToolTip.Tip="Remembers the map and the point looked at, and the camera angle" />
+                  <Button Content="Delete" Click="OnBookmarkDelete" FontSize="12" />
+                </StackPanel>
+              </StackPanel>
+              <ListBox x:Name="FindResults" FontSize="12" DoubleTapped="OnFindGo" />
+            </DockPanel>
+          </TabItem>
           <TabItem Header="Terrain" FontSize="13">
             <StackPanel Spacing="6" x:Name="TerrainPanel">
               <StackPanel Orientation="Horizontal" Spacing="6">

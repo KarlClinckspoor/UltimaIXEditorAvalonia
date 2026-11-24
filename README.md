@@ -54,7 +54,7 @@ Map 9 is Britannia. Developed and tested on Windows; the editor needs OpenGL 3.3
 | Project | What it is |
 |---|---|
 | `src/U9.Formats` | Readers and writers for the game's files. No UI. |
-| `src/U9Editor.Core` | Map space, camera, terrain raster and picking. No UI, no GL. |
+| `src/U9Editor.Core` | Map space, camera, terrain raster, picking, editing and search. No UI, no GL. |
 | `src/U9Editor.Render` | OpenGL 3.3 / GLES 3.0 terrain renderer (Silk.NET), toolkit-agnostic. |
 | `src/U9Editor.App` | The Avalonia editor: 3D view, map list, view options. |
 | `src/U9Editor.Cli` | `u9` command line: dump, unpack, debug pictures. |
@@ -102,6 +102,14 @@ drawn inside the box (added to what is selected). Dragging any of them moves the
 the ground); `[` / `]` turn the group about its middle, positions and facings together; Page Up / Page Down, End,
 Ctrl+D (copies one point east, then selected) and Delete act on all of them, each as one undo step over both
 object files. The panel's fields still show and set the last object picked. Esc clears the selection.
+
+Finding things (Find tab): type words of a type's name (`telescope`, `orb moons`), a type number (`2894`), `#id`
+of an object here, `link:n` of a nonfixed object, or `fixed` / `nonfixed`, and press Enter; all words must match.
+All maps searches every map's object files (open maps with their unsaved edits); the first time reads them all.
+Double-clicking a result goes there (opening its map) and selects it on this map; Select all found here makes the
+results a selection, to move or delete together. Go to takes `x, row` or `map, x, row`. Bookmarks remember a map,
+the point looked at and the camera; a few start the list (Castle British, Moonglow, the bridge west of Britain,
+the cave to New Magincia), and they are kept in `%AppData%/U9Editor/settings.json`.
 
 Editing terrain (Terrain tab, or B): with the brush on, a left drag on the ground raises, lowers, smooths,
 flattens (to a typed height, or the height under the first dab), roughens (smooth noise bumps), paints a texture and frame, or cuts and fills
