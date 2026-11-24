@@ -1,4 +1,4 @@
-# Drives the U9 editor's window on the Windows desktop. Run from the repo root:
+﻿# Drives the U9 editor's window on the Windows desktop. Run from the repo root:
 #   powershell -ExecutionPolicy Bypass -File .claude/skills/run-u9editor/driver.ps1 <command> [args]
 #
 #   launch [editor args...]    build-free start of src/U9Editor.App/bin/Debug/net10.0/U9Editor.exe,
@@ -6,7 +6,7 @@
 #   shot <png> [x y w h]       capture the window (or a window-relative rectangle of it)
 #   move <x> <y>               hover (the status bar then names the point and any object under it)
 #   click <x> <y> [ctrl|shift] left click, window-relative pixels (as in a full `shot`), optionally with Ctrl or Shift held
-#   drag <x1> <y1> <x2> <y2>   left drag in 20 steps
+#   drag <x1> <y1> <x2> <y2> [ctrl|shift]  left drag in 20 steps (Ctrl: box selection in the editor)
 #   down <x> <y> / up <x> <y>  press / release the left button there (move in between; shot mid-drag)
 #   key <keys>                 SendKeys string: {PGUP} ^z ^s {ESC} {END} {DEL} [ ] ...
 #   stop                       close the editor (kills it: no unsaved-changes prompt)
@@ -108,10 +108,13 @@ switch ($cmd) {
     'drag' {
         $r = Select-EditorWindow
         $x1 = [int]$rest[0]; $y1 = [int]$rest[1]; $x2 = [int]$rest[2]; $y2 = [int]$rest[3]
+        $mod = switch ($rest[4]) { 'ctrl' { 0x11 } 'shift' { 0x10 } default { 0 } }
         Move-To $r $x1 $y1
+        if ($mod) { [U9Win]::keybd_event([byte]$mod, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 50 }
         [U9Win]::mouse_event(2, 0, 0, 0, 0); Start-Sleep -Milliseconds 100
         for ($i = 1; $i -le 20; $i++) { Move-To $r ($x1 + ($x2 - $x1) * $i / 20) ($y1 + ($y2 - $y1) * $i / 20) }
         Start-Sleep -Milliseconds 100; [U9Win]::mouse_event(4, 0, 0, 0, 0)
+        if ($mod) { Start-Sleep -Milliseconds 50; [U9Win]::keybd_event([byte]$mod, 0, 2, [IntPtr]::Zero) }
     }
     'key' {
         Select-EditorWindow | Out-Null

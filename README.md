@@ -97,6 +97,12 @@ deletes, Ctrl+Z / Ctrl+Y undo and redo, Ctrl+S saves. Saving writes `static/fixe
 every changed map; the first save keeps each original beside it as `.orig`. Saved games most likely carry their
 own copy of the nonfixed objects (not checked yet), so try nonfixed changes in a new game.
 
+Several objects: Ctrl+click adds an object to the selection or takes it away, and Ctrl+drag selects every object
+drawn inside the box (added to what is selected). Dragging any of them moves them all (each keeping its height above
+the ground); `[` / `]` turn the group about its middle, positions and facings together; Page Up / Page Down, End,
+Ctrl+D (copies one point east, then selected) and Delete act on all of them, each as one undo step over both
+object files. The panel's fields still show and set the last object picked. Esc clears the selection.
+
 Editing terrain (Terrain tab, or B): with the brush on, a left drag on the ground raises, lowers, smooths,
 flattens (to a typed height, or the height under the first dab), roughens (smooth noise bumps), paints a texture and frame, or cuts and fills
 holes; right drag still orbits. Holding the mouse still keeps the height tools working. Objects on the ground go
@@ -163,9 +169,14 @@ Agents drive the running editor with `.claude/skills/run-u9editor/driver.ps1` (s
 - Map changes: a nonfixed trigger zone (usually type 1111) names a `TRIGGERS.FLX` script whose op 0x1F sends the
   player to the object with a matching link in the destination map. The cave between Buccaneer's Den and New
   Magincia is map 89 ("Buc2NewMag"), entered at points (573.0, 262.4) and (629.0, 248.9) on Britannia.
+- Object pages: +0x04 is not a dependable end of a page's data. In the shipped fixed files it points inside or
+  before the live records in 1,390 of 3,175 pages (in fixed.4's chunk 7,7 it is 0xC0 with records from 0xF0), and
+  nonfixed pages hold records no list reaches (contained items). New records go above +0x04, every live record and
+  the page's last non-zero byte; a test crowds the busiest chunks of all 328 shipped object files and checks that no
+  other object changes (trusting +0x04, 169 files failed: copies overwrote objects).
 - Object files: a chunk (32 x 32 points) is a chain of 4 KB pages. Only its first page's 16 list heads are used
   (later pages hold leftovers there); each list is one subchunk, `x / 1024 + 4 * (y / 1024)` inside the chunk, and
-  runs through records in any of the chunk's pages. A page's +0x04 is the offset of its first free byte, +0x14 the
+  runs through records in any of the chunk's pages. A page's +0x04 is meant as the offset of its first free byte (not dependable, see above), +0x14 the
   records in it and (nonfixed) +0x18 its property segments. The u32 before the data is a free page list: the
   first unused page | 1, whose +0x00 names the next. Fixed pages are packed; nonfixed pages keep holes.
   Moving an object to another chunk moves its record (and property segment) into that chunk's pages.

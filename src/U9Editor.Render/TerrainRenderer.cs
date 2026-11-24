@@ -28,6 +28,9 @@ namespace U9Editor.Render
         /// <summary>Drop terrain quads with texture 29, which the game never shows.</summary>
         public bool HideUnseen = true;
         public int HoverObject = -1, SelectedObject = -1;
+        /// <summary>Further selected objects (ids), drawn like the selected one; bump <see cref="GroupVersion"/> after a change.</summary>
+        public IReadOnlyCollection<int> Group = Array.Empty<int>();
+        public int GroupVersion;
     }
 
     /// <summary>
@@ -60,6 +63,10 @@ namespace U9Editor.Render
         bool gles;
         uint gridVao, gridVbo, gridEbo, waterVao, waterVbo;
         uint pointsTex, terrainTex, lookupTex;
+        // one byte per object id (1: in the selected group), GroupWidth ids to a row
+        const int GroupWidth = 1024;
+        uint groupTex;
+        int groupRows, uploadedGroupVersion = -1;
         bool haveTextures;
         TerrainTextures pendingTextures;
         uint gridIndexCount;
@@ -113,6 +120,8 @@ namespace U9Editor.Render
             pointsTex = gl.GenTexture();
             terrainTex = gl.GenTexture();
             lookupTex = gl.GenTexture();
+            groupTex = gl.GenTexture();
+            uploadedGroupVersion = -1;
             Info = $"{gl.GetStringS(StringName.Version)} — {gl.GetStringS(StringName.Renderer)}";
             // a new context starts empty: the map goes up again
             if (raster != null) lock (gate) { pendingRaster ??= raster; pendingTextures ??= textures; pendingMarkers ??= markers; pendingFixed = markersFixed; pendingModels ??= models; }
@@ -450,10 +459,17 @@ namespace U9Editor.Render
                         gl.DrawElements(PrimitiveType.Triangles, gridIndexCount, DrawElementsType.UnsignedInt, (void*)0);
                     }
 
+                UploadGroup(st);
+                gl.ActiveTexture(TextureUnit.Texture5);
+                gl.BindTexture(TextureTarget.Texture2D, groupTex);
+                gl.ActiveTexture(TextureUnit.Texture0);
+
                 if (st.ShowModels && modelsReady && (st.ShowFixed || st.ShowNonfixed))
                 {
                     gl.UseProgram(modelProg);
                     Matrix(modelProg, "uViewProj", vp);
+                    gl.Uniform1(U(modelProg, "uGroup"), 5);
+                    gl.Uniform1(U(modelProg, "uGroupRows"), groupRows);
                     gl.Uniform1(U(modelProg, "uSelected"), st.SelectedObject);
                     gl.Uniform1(U(modelProg, "uHover"), st.HoverObject);
                     gl.Uniform1(U(modelProg, "uSplit"), modelSplit);
@@ -485,6 +501,8 @@ namespace U9Editor.Render
                     gl.Uniform1(U(markerProg, "uPointScale"), (float)height * 0.6f);
                     gl.Uniform1(U(markerProg, "uHover"), st.HoverObject);
                     gl.Uniform1(U(markerProg, "uSelected"), st.SelectedObject);
+                    gl.Uniform1(U(markerProg, "uGroup"), 5);
+                    gl.Uniform1(U(markerProg, "uGroupRows"), groupRows);
                     gl.Uniform1(U(markerProg, "uOnlyZones"), onlyZones ? 1 : 0);
                     gl.BindVertexArray(markerVao);
                     if (st.ShowFixed && markerFixed > 0 && !onlyZones) gl.DrawArrays(PrimitiveType.Points, 0, (uint)markerFixed);
@@ -545,6 +563,25 @@ namespace U9Editor.Render
             return s;
         }
 
+        void UploadGroup(ViewState st)
+        {
+            if (st.GroupVersion == uploadedGroupVersion) return;
+            uploadedGroupVersion = st.GroupVersion;
+            var ids = st.Group;
+            int max = 0;
+            foreach (int id in ids) max = Math.Max(max, id);
+            groupRows = ids.Count == 0 ? 0 : max / GroupWidth + 1;
+            var bytes = new byte[GroupWidth * Math.Max(1, groupRows)];
+            foreach (int id in ids) if (id >= 0) bytes[id] = 1;
+            gl.BindTexture(TextureTarget.Texture2D, groupTex);
+            gl.PixelStore(PixelStoreParameter.UnpackAlignment, 1);
+            fixed (byte* p = bytes)
+                gl.TexImage2D(TextureTarget.Texture2D, 0, InternalFormat.R8ui, GroupWidth, (uint)Math.Max(1, groupRows), 0, PixelFormat.RedInteger, PixelType.UnsignedByte, p);
+            gl.PixelStore(PixelStoreParameter.UnpackAlignment, 4);
+            gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+        }
+
         public void Dispose()
         {
             if (gl == null) return;
@@ -556,7 +593,7 @@ namespace U9Editor.Render
             markerFixed = markerNonfixed = 0;
             gl.DeleteVertexArray(gridVao); gl.DeleteBuffer(gridVbo); gl.DeleteBuffer(gridEbo);
             gl.DeleteVertexArray(waterVao); gl.DeleteBuffer(waterVbo);
-            gl.DeleteTexture(pointsTex); gl.DeleteTexture(terrainTex); gl.DeleteTexture(lookupTex);
+            gl.DeleteTexture(pointsTex); gl.DeleteTexture(terrainTex); gl.DeleteTexture(lookupTex); gl.DeleteTexture(groupTex);
             haveTextures = false;
             uniforms.Clear();
             texWidth = texHeight = 0;

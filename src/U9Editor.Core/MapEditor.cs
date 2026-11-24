@@ -157,15 +157,17 @@ namespace U9Editor.Core
             foreach (var mo in e.Objects)
             {
                 var so = Objects.Of(mo);
+                if (so == null && mo.Removed) continue;          // made and taken back before it was ever shown
                 if (so == null) { so = Objects.Add(mo, Space); structural = true; }
-                Objects.Refresh(so, Space);
+                // a removed object's record may lie past the end of the file now (an undone copy that added a page)
+                if (!mo.Removed) Objects.Refresh(so, Space);
                 if (so.Hidden != mo.Removed) { so.Hidden = mo.Removed; structural = true; }
                 touched.Add(so);
             }
             if (Models != null)
             {
                 if (structural) Models.RebuildInstances(Objects, Space);
-                else foreach (var so in touched) Models.SetInstance(so, ModelScene.Placement(so.Source, Space));
+                else foreach (var so in touched) if (!so.Source.Removed) Models.SetInstance(so, ModelScene.Placement(so.Source, Space));
             }
             Changed?.Invoke(touched, structural);
         }

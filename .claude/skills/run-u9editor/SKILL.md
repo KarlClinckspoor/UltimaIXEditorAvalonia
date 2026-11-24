@@ -58,6 +58,7 @@ strength 20 builds a hill some 45 units high: the default (6) is gentler.
 | `shot <png> [x y w h]` | captures the window, or a rectangle of it |
 | `click x y [ctrl\|shift]`, `drag x1 y1 x2 y2`, `move x y` | mouse, in window pixels as a full `shot` shows them (title bar included) |
 | `key <SendKeys>` | `^z` undo, `^y` redo, `^d` copy, `^s` save, `{DEL}`, `{END}` to ground, `{[}` / `{]}` turn, `{PGUP}` / `{PGDN}`, `{ESC}` |
+| `drag x1 y1 x2 y2 ctrl` | box selection: at the `launch` view above, `drag 130 180 340 240 ctrl` selects the row of ten small trees left of the gate (they turn magenta); then `drag 230 212 480 520` moves all ten, `{]}` turns them about their middle, `^d` copies them |
 | `down x y`, `up x y` | press / release the left button there; `move` in between, and `shot` mid-drag (a held terrain brush keeps working: `down 610 720`, `move 615 722`, wait 1.5 s, `shot`, `up 615 722` raises a hill under Moonglow's plants and shows them riding up) |
 | `stop` | kills the editor (no unsaved-changes prompt) |
 

@@ -74,6 +74,13 @@ namespace U9Editor.App
             View.ObjectPicked += o => { objectStatus = o != null ? "selected " + o : null; Select(o); };
             View.ObjectDragging += (o, x, y, z) => StatusText.Text = $"moving {o.Name ?? "type " + o.Source.Type} to ({x / 128.0:F2}, {y / 128.0:F2}) z {z}   (Esc puts it back)";
             View.ObjectDragged += (o, x, y, z) => Edit(() => { editor.Move(o, x, y, z); StatusText.Text = Moved(o); });
+            View.GroupDragged += (g, dx, dy) => Edit(() =>
+            {
+                editor.MoveGroup(g, dx, dy, 0, View.FollowTerrain);
+                StatusText.Text = $"Moved {g.Count} objects by ({dx / 128.0:0.##}, {dy / 128.0:0.##}) points. Ctrl+Z takes it back.";
+            });
+            View.BoxChanged += ShowBox;
+            View.SelectionChanged += () => { if (View.Selection.Count > 1) Select(selected); };
             View.FollowTerrain = true;
             View.PlaceAt += OnPlaceAt;
             View.StrokeEnded += OnStrokeEnded;
@@ -255,6 +262,7 @@ namespace U9Editor.App
                 if (keep != null && LinksList.ItemsSource is List<LinkItem> items)
                     LinksList.SelectedItem = items.FirstOrDefault(i => i.Link.Zone == keep.Link.Zone);
             }
+            View.PruneSelection();
             if (selected != null && selected.Source.Removed) { View.SelectObject(null); }
             else Select(selected);
             UpdateTitle();
@@ -268,7 +276,8 @@ namespace U9Editor.App
             catch (Exception ex) when (ex is InvalidOperationException || ex is ArgumentException || ex is InvalidDataException)
             {
                 StatusText.Text = "Not done: " + ex.Message;
-                if (selected != null) View.RefreshEdited(new[] { selected }, false);
+                if (View.Selection.Count > 0) View.RefreshEdited(View.Selection, false);
+                else if (selected != null) View.RefreshEdited(new[] { selected }, false);
             }
         }
 
@@ -293,6 +302,9 @@ namespace U9Editor.App
                 LinksList.ScrollIntoView(li);
             }
             ObjectTitle.Text = $"{(o.Kind == ObjectFileKind.Fixed ? "Fixed" : "Nonfixed")} #{o.Id}: {o.Name ?? "(no name)"}, type {s.Type}";
+            if (View.Selection.Count > 1)
+                ObjectTitle.Text = $"{View.Selection.Count} objects selected ({View.Selection.Count(x => x.Kind == ObjectFileKind.Fixed)} fixed): " +
+                                   "drag one to move them all; the buttons and keys act on all. Fields: " + ObjectTitle.Text;
             EditX.Text = (s.MapX / 128.0).ToString("0.###", ci);
             EditRow.Text = (s.MapY / 128.0).ToString("0.###", ci);
             EditZ.Text = s.Z.ToString(ci);
@@ -337,8 +349,12 @@ namespace U9Editor.App
         static string Moved(SceneObject o) =>
             $"Moved {o.Name ?? "type " + o.Source.Type} to ({o.Source.MapX / 128.0:F2}, {o.Source.MapY / 128.0:F2}) z {o.Source.Z}. Ctrl+Z takes it back.";
 
+        // with several objects selected, the edit buttons and keys act on all of them
+        List<SceneObject> Many => View.Selection.Count > 1 ? View.Selection.ToList() : null;
+
         void OnDropToGround(object sender, RoutedEventArgs e)
         {
+            if (Many is { } g) { Edit(() => editor.DropGroupToGround(g)); return; }
             if (selected == null) return;
             var o = selected;
             Edit(() => editor.Move(o, o.Source.MapX, o.Source.MapY, editor.GroundZ(o.Source.MapX, o.Source.MapY)));
@@ -346,6 +362,17 @@ namespace U9Editor.App
 
         void OnDuplicate(object sender, RoutedEventArgs e)
         {
+            if (Many is { } g)
+            {
+                List<SceneObject> copies = null;
+                Edit(() => copies = editor.DuplicateGroup(g, 128, 0));
+                if (copies != null && copies.Count > 0)
+                {
+                    View.SetSelection(copies, copies[^1]);
+                    StatusText.Text = $"Copied {copies.Count} objects: the copies are selected, one point east.";
+                }
+                return;
+            }
             if (selected == null) return;
             var o = selected;
             SceneObject copy = null;
@@ -356,6 +383,12 @@ namespace U9Editor.App
 
         void OnDelete(object sender, RoutedEventArgs e)
         {
+            if (Many is { } g)
+            {
+                Edit(() => editor.RemoveGroup(g));
+                StatusText.Text = $"Deleted {g.Count} objects. Ctrl+Z brings them back.";
+                return;
+            }
             if (selected == null) return;
             var o = selected;
             Edit(() => editor.Remove(o));
@@ -364,6 +397,7 @@ namespace U9Editor.App
 
         void Turn(float degrees)
         {
+            if (Many is { } g) { Edit(() => { editor.TurnGroup(g, degrees); StatusText.Text = $"Turned {g.Count} objects {degrees:0.#}° about their middle. Ctrl+Z takes it back."; }); return; }
             if (selected == null) return;
             var o = selected;
             Edit(() => editor.Rotate(o, MapEditor.Turned(o.Source.Rotation, degrees)));
@@ -371,6 +405,7 @@ namespace U9Editor.App
 
         void Raise(int units)
         {
+            if (Many is { } g) { Edit(() => editor.MoveGroup(g, 0, 0, units, false)); return; }
             if (selected == null) return;
             var o = selected;
             Edit(() => editor.Move(o, o.Source.MapX, o.Source.MapY, o.Source.Z + units));
@@ -628,6 +663,16 @@ namespace U9Editor.App
             return $"{prefix}point ({h.X}, {h.Row})  height {p.Height}  texture {p.Texture}  frame {p.Frame}" +
                    $"{(p.Hole ? "  hole" : "")}  turn {p.Rotation}{(p.Bit15 ? "  bit15" : "")}" +
                    $"   tile {h.X / 16},{h.Row / 16}  chunk {terrain.TileChunks[tile]}   raw 0x{p.Raw:X8}";
+        }
+
+        void ShowBox(Avalonia.Rect? r)
+        {
+            if (r is not { } b) { SelectBox.IsVisible = false; return; }
+            Avalonia.Controls.Canvas.SetLeft(SelectBox, b.X);
+            Avalonia.Controls.Canvas.SetTop(SelectBox, b.Y);
+            SelectBox.Width = b.Width;
+            SelectBox.Height = b.Height;
+            SelectBox.IsVisible = true;
         }
 
         void OnFrameDrawn()

@@ -16,8 +16,9 @@ namespace U9Editor.App
     /// <summary>
     /// The 3D view, after the UW editor's LevelView: hosts <see cref="TerrainRenderer"/> in Avalonia's OpenGL
     /// control and turns mouse and keys into camera moves and picks. It draws only when something changed.
-    /// Mouse: left click selects, left drag on the selected object moves it, other left or right drags orbit,
-    /// middle or Shift+left drag pans, wheel zooms.
+    /// Mouse: left click selects, Ctrl+click adds or takes away an object, Ctrl+left drag selects the objects in a box,
+    /// left drag on a selected object moves the selection, other left or right drags orbit, middle or Shift+left drag
+    /// pans, wheel zooms.
     /// Keys: W/A/S/D or arrows move, Q/E turn, R/F raise and lower the point looked at, +/- zoom, Home frames the map.
     /// </summary>
     public sealed class MapView : OpenGlControlBase, Avalonia.Rendering.ICustomHitTest
@@ -264,6 +265,10 @@ namespace U9Editor.App
         SceneObject dragObject;
         Vector3 dragGrab, dragStartWorld;
         int dragX, dragY, dragZ, dragGroundOffset;
+        // a drag of a selection of several objects: all move by the grabbed one's offset
+        List<SceneObject> dragGroup;
+        /// <summary>A selection of several objects was dragged and let go: how far, in object units east and north.</summary>
+        public event Action<IReadOnlyList<SceneObject>, int, int> GroupDragged;
 
         /// <summary>Objects changed in the editor: move their markers and models, or send all again.</summary>
         public void RefreshEdited(IReadOnlyList<SceneObject> touched, bool structural)
@@ -276,6 +281,7 @@ namespace U9Editor.App
             else
                 foreach (var o in touched)
                 {
+                    if (o.Source.Removed) continue;
                     renderer.UpdateMarker(o.Id, o.World);
                     if (models != null) renderer.UpdateInstance(models.SlotOf(o.Id), ModelScene.Placement(o.Source, space), o.Id);
                 }
@@ -307,7 +313,8 @@ namespace U9Editor.App
             if (Editor == null || objects == null || State.SelectedObject < 0) return;
             var hit = PickAt(p);
             var ob = PickObjectAt(p, hit);
-            if (ob == null || ob.Id != State.SelectedObject)
+            if (ob != null && selection.Count > 1 && selection.Contains(ob)) { }      // any of the selection can be grabbed
+            else if (ob == null || ob.Id != State.SelectedObject)
             {
                 // grabbing needs no exact hit: anywhere inside the selection's bounding sphere, or near its marker
                 ob = State.SelectedObject < objects.All.Count ? objects.All[State.SelectedObject] : null;
@@ -315,6 +322,7 @@ namespace U9Editor.App
             }
             if (!RayToHeight(p, ob.World.Y, out dragGrab)) return;
             dragObject = ob;
+            dragGroup = selection.Count > 1 && selection.Contains(ob) ? new List<SceneObject>(selection) : null;
             dragStartWorld = ob.World;
             dragX = ob.Source.MapX; dragY = ob.Source.MapY; dragZ = ob.Source.Z;
             dragGroundOffset = ob.Source.Z - Editor.GroundZ(dragX, dragY);
@@ -344,7 +352,12 @@ namespace U9Editor.App
             int my = Math.Clamp((int)MathF.Round(space.Row(w.Z) * MapSpace.ObjectUnitsPerPoint), 0, space.Height * (int)MapSpace.ObjectUnitsPerPoint - 1);
             int z = FollowTerrain ? Math.Clamp(Editor.GroundZ(mx, my) + dragGroundOffset, 0, 0xFFFF) : dragObject.Source.Z;
             dragX = mx; dragY = my; dragZ = z;
-            Preview(dragObject, mx, my, z, dragObject.Source.Rotation);
+            if (dragGroup != null)
+            {
+                foreach (var (o, x, y, gz) in Editor.GroupMoveTargets(dragGroup, mx - dragObject.Source.MapX, my - dragObject.Source.MapY, 0, FollowTerrain))
+                    Preview(o, x, y, gz, o.Source.Rotation);
+            }
+            else Preview(dragObject, mx, my, z, dragObject.Source.Rotation);
             ObjectDragging?.Invoke(dragObject, mx, my, z);
         }
 
@@ -353,9 +366,11 @@ namespace U9Editor.App
         {
             if (dragObject == null) return;
             var o = dragObject;
+            var g = dragGroup;
             dragObject = null;
+            dragGroup = null;
             anyDown = dragging = false;
-            RefreshEdited(new[] { o }, false);
+            RefreshEdited(g ?? (IReadOnlyList<SceneObject>)new[] { o }, false);
         }
 
         public bool IsDraggingObject => dragObject != null && dragging;
@@ -394,12 +409,94 @@ namespace U9Editor.App
             CameraMoved();
         }
 
-        /// <summary>Selects an object as a click would.</summary>
+        /// <summary>Selects an object as a click would (the selection becomes just it, or nothing).</summary>
         public void SelectObject(SceneObject o)
         {
-            State.SelectedObject = o?.Id ?? -1;
+            selection.Clear();
+            if (o != null) selection.Add(o);
+            SelectionUpdated(o);
             ObjectPicked?.Invoke(o);
+        }
+
+        readonly List<SceneObject> selection = new List<SceneObject>();
+        /// <summary>Every selected object; the last one picked is <see cref="ViewState.SelectedObject"/> and shown in the panel.</summary>
+        public IReadOnlyList<SceneObject> Selection => selection;
+        /// <summary>The selection changed (also when it is one object picked by a click).</summary>
+        public event Action SelectionChanged;
+        /// <summary>The selection box while Ctrl+dragging (view coordinates), or null when it is gone.</summary>
+        public event Action<Rect?> BoxChanged;
+
+        /// <summary>Makes these the selection; <paramref name="primary"/> (one of them) is the one the panel shows.</summary>
+        public void SetSelection(IEnumerable<SceneObject> objs, SceneObject primary)
+        {
+            selection.Clear();
+            foreach (var o in objs) if (o != null && !selection.Contains(o)) selection.Add(o);
+            if (primary != null && !selection.Contains(primary)) selection.Add(primary);
+            primary ??= selection.Count > 0 ? selection[^1] : null;
+            SelectionUpdated(primary);
+            ObjectPicked?.Invoke(primary);
+        }
+
+        /// <summary>Drops deleted objects from the selection (after an edit or undo).</summary>
+        public void PruneSelection()
+        {
+            if (selection.RemoveAll(o => o.Source.Removed) == 0) return;
+            var primary = selection.Count == 0 ? null : selection.Find(o => o.Id == State.SelectedObject) ?? selection[^1];
+            SelectionUpdated(primary);
+            ObjectPicked?.Invoke(primary);
+        }
+
+        void SelectionUpdated(SceneObject primary)
+        {
+            State.SelectedObject = primary?.Id ?? -1;
+            var ids = new List<int>(selection.Count);
+            foreach (var o in selection) ids.Add(o.Id);
+            State.Group = selection.Count > 1 ? ids : Array.Empty<int>();
+            State.GroupVersion++;
+            SelectionChanged?.Invoke();
             Redraw();
+        }
+
+        void ToggleInSelection(SceneObject o)
+        {
+            if (selection.Remove(o))
+            {
+                var primary = o.Id == State.SelectedObject ? (selection.Count > 0 ? selection[^1] : null) : selection.Find(s => s.Id == State.SelectedObject);
+                SelectionUpdated(primary);
+                ObjectPicked?.Invoke(primary);
+            }
+            else
+            {
+                selection.Add(o);
+                SelectionUpdated(o);
+                ObjectPicked?.Invoke(o);
+            }
+        }
+
+        // ---- box selection (Ctrl+left drag)
+
+        bool boxing;
+
+        Rect BoxRect(Point a, Point b) => new Rect(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));
+
+        /// <summary>The objects drawn inside a rectangle of the view (their marker, or their model's centre).</summary>
+        public List<SceneObject> ObjectsInBox(Rect box)
+        {
+            var found = new List<SceneObject>();
+            if (objects == null) return found;
+            var vp = Camera.View * Camera.Projection((float)(Bounds.Width / Math.Max(1, Bounds.Height)));
+            bool models = ModelsDrawn;
+            foreach (var o in objects.All)
+            {
+                if (o.Hidden || o.Source.Removed) continue;
+                if (o.Kind == U9.Formats.Objects.ObjectFileKind.Fixed ? !State.ShowFixed : !State.ShowNonfixed) continue;
+                var at = models && o.Model >= 0 ? o.BoundCentre : o.World;
+                var c = Vector4.Transform(new Vector4(at, 1), vp);
+                if (c.W <= 0.01f) continue;
+                double sx = (c.X / c.W * 0.5f + 0.5f) * Bounds.Width, sy = (0.5f - c.Y / c.W * 0.5f) * Bounds.Height;
+                if (box.Contains(new Point(sx, sy))) found.Add(o);
+            }
+            return found;
         }
 
         /// <summary>The objects changed how they are drawn (link zones found, say).</summary>
@@ -451,7 +548,9 @@ namespace U9Editor.App
                 e.Handled = true;
                 return;
             }
+            boxing = false;
             if (leftDown && !panning && brush != null) StartStroke(pressAt);
+            else if (leftDown && !panning && !Placing && (e.KeyModifiers & KeyModifiers.Control) != 0) boxing = true;
             else if (leftDown && !panning) StartObjectDrag(pressAt);
             e.Pointer.Capture(this);
             e.Handled = true;
@@ -473,6 +572,11 @@ namespace U9Editor.App
                 if (dragging && dragObject != null)
                 {
                     DragObjectTo(p);
+                    return;
+                }
+                if (boxing)
+                {
+                    if (dragging) BoxChanged?.Invoke(BoxRect(pressAt, p));
                     return;
                 }
                 if (dragging)
@@ -519,12 +623,34 @@ namespace U9Editor.App
             bool click = anyDown && !dragging && leftDown && !panning;
             var at = e.GetPosition(this);
             var dropped = dragging ? dragObject : null;
-            anyDown = dragging = panning = leftDown = false;
+            var droppedGroup = dragGroup;
+            bool boxed = boxing && dragging;
+            bool ctrlClick = boxing && click;
+            anyDown = dragging = panning = leftDown = boxing = false;
             dragObject = null;
+            dragGroup = null;
             e.Pointer.Capture(null);
+            if (boxed)
+            {
+                BoxChanged?.Invoke(null);
+                var inBox = ObjectsInBox(BoxRect(pressAt, at));
+                var keepPrimary = selection.Find(s => s.Id == State.SelectedObject);
+                foreach (var o in inBox) if (!selection.Contains(o)) selection.Add(o);
+                var primary = keepPrimary ?? (selection.Count > 0 ? selection[^1] : null);
+                SelectionUpdated(primary);
+                ObjectPicked?.Invoke(primary);
+                return;
+            }
+            if (ctrlClick)
+            {
+                var ob = PickObjectAt(at, PickAt(at));
+                if (ob != null) ToggleInSelection(ob);
+                return;
+            }
             if (dropped != null)
             {
-                ObjectDragged?.Invoke(dropped, dragX, dragY, dragZ);
+                if (droppedGroup != null) GroupDragged?.Invoke(droppedGroup, dragX - dropped.Source.MapX, dragY - dropped.Source.MapY);
+                else ObjectDragged?.Invoke(dropped, dragX, dragY, dragZ);
                 return;
             }
             if (click && Placing)
@@ -537,11 +663,9 @@ namespace U9Editor.App
             {
                 var hit = PickAt(at);
                 var ob = PickObjectAt(at, hit);
-                State.SelectedObject = ob?.Id ?? -1;
-                ObjectPicked?.Invoke(ob);
                 State.SelectedX = hit.Hit ? hit.X : -1;
                 State.SelectedRow = hit.Hit ? hit.Row : -1;
-                Redraw();
+                SelectObject(ob);
                 Picked?.Invoke(hit);
             }
         }
@@ -552,6 +676,8 @@ namespace U9Editor.App
             EndStroke();
             if (dragObject != null && dragging) CancelDrag();
             dragObject = null;
+            dragGroup = null;
+            if (boxing) { boxing = false; BoxChanged?.Invoke(null); }
             anyDown = dragging = panning = leftDown = false;
         }
 

@@ -148,7 +148,10 @@ uniform float uPointScale;
 uniform int uHover;
 uniform int uSelected;
 uniform int uOnlyZones;       // models are shown: mark only the map-change zones
+uniform highp usampler2D uGroup;    // one texel per object id: 1 = in the selected group
+uniform int uGroupRows;
 out vec3 vColour;
+bool InGroup(int id) { return id >= 0 && (id >> 10) < uGroupRows && texelFetch(uGroup, ivec2(id & 1023, id >> 10), 0).r > 0u; }
 void main()
 {
     gl_Position = uViewProj * vec4(aPos, 1.0);
@@ -158,7 +161,7 @@ void main()
     vColour = aKind < 0.5 ? vec3(1.0, 0.62, 0.15) : aKind < 1.5 ? vec3(0.25, 0.9, 1.0) : aKind < 2.5 ? vec3(1.0, 0.95, 0.1) : vec3(0.7, 0.45, 1.0);   // fixed, nonfixed, map change zone, arrival
     if (aKind > 1.5) size = max(size, 9.0) + 3.0;
     if (id == uHover) { vColour = vec3(1.0); size += 4.0; }
-    if (id == uSelected) { vColour = vec3(1.0, 0.2, 0.9); size += 6.0; }
+    if (id == uSelected || InGroup(id)) { vColour = vec3(1.0, 0.2, 0.9); size += 6.0; }
     gl_PointSize = size;
 }";
 
@@ -188,6 +191,8 @@ layout(location = 9) in float aId;
 uniform mat4 uViewProj;
 uniform int uSelected;
 uniform int uHover;
+uniform highp usampler2D uGroup;
+uniform int uGroupRows;
 out vec3 vNormal;
 out vec2 vUv;
 out float vLayer;
@@ -202,7 +207,8 @@ void main()
     vLayer = aLayer;
     vColour = aColour;
     int id = int(aId + 0.5);
-    vMark = id == uSelected ? 2 : (id == uHover ? 1 : 0);
+    bool inGroup = id >= 0 && (id >> 10) < uGroupRows && texelFetch(uGroup, ivec2(id & 1023, id >> 10), 0).r > 0u;
+    vMark = id == uSelected || inGroup ? 2 : (id == uHover ? 1 : 0);
 }";
 
         public const string ModelFragment = @"

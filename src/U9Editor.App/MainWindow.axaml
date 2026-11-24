@@ -202,6 +202,9 @@
     </Border>
     <Grid>
       <local:MapView x:Name="View" />
+      <Canvas IsHitTestVisible="False" ClipToBounds="True">
+        <Rectangle x:Name="SelectBox" IsVisible="False" Stroke="#FFFF33E6" StrokeThickness="1.5" Fill="#22FF33E6" StrokeDashArray="4,3" />
+      </Canvas>
       <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" Width="56" Height="56"
               CornerRadius="28" Background="#66000000" IsHitTestVisible="False">
         <Canvas x:Name="Compass" Width="56" Height="56">
