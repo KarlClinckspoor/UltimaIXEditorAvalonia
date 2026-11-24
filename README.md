@@ -52,7 +52,7 @@ own copy of the nonfixed objects (not checked yet), so try nonfixed changes in a
 Editing terrain (Terrain tab, or B): with the brush on, a left drag on the ground raises, lowers, smooths,
 flattens (to a typed height, or the height under the first dab), roughens (smooth noise bumps), paints a texture and frame, or cuts and fills
 holes; right drag still orbits. Holding the mouse still keeps the height tools working. Objects on the ground go
-up and down with it: up to 16 object units above it or 64 sunk into it (many are sunk on purpose: on Moonglow
+up and down with it: up to 16 object units above it or 64 sunk into it (many are sunk on purpose: on map 4
 plants and the pools' stones sit 45 to 61 below); things on tables and floors stay where they are. Each
 stroke is one undo step, objects included. Painting a texture the map did not use adds it to the view's textures.
 With Blend edges on, painting lays the texture as ground on the points' corners and gives the quads along the
@@ -126,7 +126,7 @@ Map space (used by the editor):
   evenly over plain ground too, which is turned at random to hide the tiling. `u9 bitmap-frames` shows a set.
 - Bitmaps: pure magenta (RGB565 0xF81F, ARGB1555 0x7C1F, even with the opaque bit) is a colour key for
   transparent pixels. Model faces with flag bit 3 are not drawn: they are the untextured magenta blocking walls
-  (579 of the 580 magenta untextured faces in `sappear.flx`, and no other face), such as Moonglow's.
+  (579 of the 580 magenta untextured faces in `sappear.flx`, and no other face), such as on map 4 (an unused development map named Moonglow; the city is on Britannia).
 - Bitmap pixel format is the low nibble of frame byte 1: 3 = 8-bit intensity, 4 = RGB565, 5 = ARGB1555.
 - Terrain transition sets: each 9-frame texture blends two plain textures, and which two can be read off the map:
   plain quads beside a transition quad vote for the material on the side they touch. On Britannia 13 of its 14

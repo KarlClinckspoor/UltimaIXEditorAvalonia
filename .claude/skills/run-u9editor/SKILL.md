@@ -62,7 +62,9 @@ strength 20 builds a hill some 45 units high: the default (6) is gentler.
 | `stop` | kills the editor (no unsaved-changes prompt) |
 
 Editor arguments: `--gamedata PATH --map N --size WxH --look X,ROW --distance D --pitch P --yaw Y --top-down`.
-Map 9 is Britannia (Lord British's throne at `--look 502,554`), 4 is Moonglow (small, quick to load).
+Map 9 is Britannia (Lord British's throne at `--look 502,554`; the real city of Moonglow is in its east). Map 4,
+named "Moonglow", is a development leftover the game does not use: handy for UI tests because it is small and
+quick to load, but check anything game-facing on Britannia.
 
 Layout at `--size 1400x900` (window 1416 x 939 at 100% scaling): the 3D view is x 8-1028, y 104-905; the
 Selected object panel is x 1030-1416, y 105-285 (X field at 1120,165); the status bar is y 905-935, with the
@@ -128,7 +130,7 @@ into them with an explicit z rather than walking. Read the position with `pos` b
 - Keys reach the game with `keybd_event` and scan codes from `MapVirtualKey` (arrows need the extended flag);
   `game.ps1` does that. The game draws its own mouse cursor, so mouse clicks miss: use keys (`game.ps1 quit` is
   Ctrl+X, then Enter on the dialog).
-- `start_at` on Moonglow (map 4) makes the game shut down (cleanly, no crash report) during the teleport from the
+- `start_at` on map 4 (the unused development "Moonglow", not the city) makes the game shut down (cleanly, no crash report) during the teleport from the
   new game's Earth (map 14), with or without a height. Starting on Britannia and then `tppos 4 ...` keeps the game
   running, but there the picture stayed dark and unchanging and the console stopped answering. Britannia (map 9)
   is the dependable test map for now.
