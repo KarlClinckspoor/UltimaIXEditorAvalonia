@@ -171,6 +171,21 @@
                 <CheckBox x:Name="BrushTurn" Content="Random quarter turns" IsChecked="True" FontSize="12" Click="OnBrushChanged" Margin="0,0,8,0" />
                 <CheckBox x:Name="BrushFollow" Content="Objects follow the ground" IsChecked="True" FontSize="12" Click="OnBrushChanged" />
               </WrapPanel>
+              <ListBox x:Name="TexturePalette" MaxHeight="132" SelectionChanged="OnPaletteSelected" Padding="0"
+                       ToolTip.Tip="The map's ground textures, most used first: click one to paint it">
+                <ListBox.Styles>
+                  <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="3" />
+                    <Setter Property="MinWidth" Value="0" />
+                    <Setter Property="MinHeight" Value="0" />
+                  </Style>
+                </ListBox.Styles>
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel />
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+              </ListBox>
               <TextBlock x:Name="BlendInfo" FontSize="11" TextWrapping="Wrap" />
               <TextBlock Opacity="0.6" FontSize="11" TextWrapping="Wrap"
                          Text="Strength: point heights (a quarter unit each) per dab for Raise and Lower, percent of the way per dab for Smooth and Flatten. Holding the mouse still keeps raising. [ and ] change the radius; Ctrl+click takes the height (Flatten) or texture (Paint) from the ground. Ctrl+Z takes back a whole stroke; Ctrl+S writes static/terrain.N (the first time keeping terrain.N.orig)." />

@@ -184,6 +184,7 @@ namespace U9Editor.App
                 View.SetTextures(textures);
             }
             editor.Models = modelScene;
+            FillPalette();
             Select(null);
             UpdateTitle();
             RefreshTypeList();
@@ -764,6 +765,57 @@ namespace U9Editor.App
             }
         }
 
+        bool fillingPalette;
+
+        /// <summary>Thumbnails of the map's plain ground textures (first frame), most used first.</summary>
+        void FillPalette()
+        {
+            fillingPalette = true;
+            try
+            {
+                var items = new List<Control>();
+                if (textures != null && editor?.Raster != null)
+                {
+                    var tr = editor.Transitions;
+                    var uses = new Dictionary<int, int>();
+                    foreach (uint raw in editor.Raster.Points) { int t = (int)(raw >> 22); uses[t] = uses.GetValueOrDefault(t) + 1; }
+                    foreach (var t in uses.Where(kv => !tr.IsTransition(kv.Key)).OrderByDescending(kv => kv.Value).Select(kv => kv.Key))
+                    {
+                        int frame = tr.PlainFrames.TryGetValue(t, out var fr) && fr.Length > 0 ? fr[0] : 0;
+                        int layer = textures.Lookup[t * TerrainTextures.Frames + frame];
+                        if (layer == 0) continue;
+                        var bmp = new Avalonia.Media.Imaging.WriteableBitmap(new PixelSize(TerrainTextures.LayerSize, TerrainTextures.LayerSize), new Vector(96, 96),
+                                                                             Avalonia.Platform.PixelFormat.Rgba8888, Avalonia.Platform.AlphaFormat.Unpremul);
+                        using (var fb = bmp.Lock())
+                        {
+                            var src = textures.Layers[layer - 1];
+                            int row = TerrainTextures.LayerSize * 4;
+                            for (int y = 0; y < TerrainTextures.LayerSize; y++)
+                                System.Runtime.InteropServices.Marshal.Copy(src, y * row, fb.Address + y * fb.RowBytes, row);
+                        }
+                        var tip = $"texture {t} ({uses[t]} quads)";
+                        var partners = tr.Sets.Values.Where(s => s.A == t || s.B == t).Select(s => s.A == t ? s.B : s.A).Distinct().OrderBy(x => x).ToList();
+                        if (partners.Count > 0) tip += $", blends into {string.Join(", ", partners)}";
+                        var img = new Avalonia.Controls.Image { Source = bmp, Width = 34, Height = 34, Tag = t };
+                        ToolTip.SetTip(img, tip);
+                        items.Add(img);
+                    }
+                }
+                TexturePalette.ItemsSource = items;
+            }
+            finally { fillingPalette = false; }
+        }
+
+        void OnPaletteSelected(object sender, SelectionChangedEventArgs e)
+        {
+            if (fillingPalette || TexturePalette.SelectedItem is not Avalonia.Controls.Image img || img.Tag is not int t) return;
+            BrushTexture.Text = t.ToString();
+            BrushFrame.Text = (editor?.Transitions.PlainFrames.TryGetValue(t, out var fr) == true && fr.Length > 0 ? fr[0] : 0).ToString();
+            if (BrushTool.SelectedIndex != 4) BrushTool.SelectedIndex = 4;
+            OnBrushChanged(null, null);
+            StatusText.Text = $"Painting texture {t}.";
+        }
+
         void ShowBlendInfo()
         {
             if (editor?.Raster == null || BrushTool.SelectedIndex != 4 || BrushBlend.IsChecked != true) { BlendInfo.Text = ""; return; }
@@ -797,6 +849,7 @@ namespace U9Editor.App
             {
                 textures = TerrainTextures.Build(editor.Raster, i => i < bitmaps.Count ? bitmaps.Read(i) : null);
                 View.SetTextures(textures);
+                FillPalette();
             }
             StatusText.Text = editor.UndoDescription != null ? $"Terrain: {editor.UndoDescription} (Ctrl+Z takes it back)." : "Nothing changed.";
             UpdateTitle();
