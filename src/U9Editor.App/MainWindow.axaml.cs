@@ -119,7 +119,8 @@ namespace U9Editor.App
             {
                 SideTabs.SelectedIndex = 4;
                 ScenesList.SelectedIndex = Program.SceneAtStart;
-                SceneTime.Value = Program.SceneTimeAtStart;      // shows that moment, camera points hidden
+                SceneTime.Value = Program.SceneTimeAtStart;
+                OnSceneScrub(null, null);      // shows that moment, camera points hidden (also at 0, where the slider does not change)
             }
             View.Redraw();
         }
