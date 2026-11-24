@@ -33,6 +33,9 @@ namespace U9Editor.Core
 
         sealed class Step
         {
+            static long next;
+            /// <summary>Unique for the session, so "the step on top when saved" tells changes apart.</summary>
+            public readonly long Id = ++next;
             public string Description;
             /// <summary>The object edit; null for a terrain stroke.</summary>
             public ObjectMap Map;
@@ -47,7 +50,7 @@ namespace U9Editor.Core
         }
 
         readonly List<Step> undo = new List<Step>(), redo = new List<Step>();
-        int fixedVersion, nonfixedVersion, fixedSaved, nonfixedSaved, scriptVersion, scriptSaved;
+        int fixedVersion, nonfixedVersion, scriptVersion;
         List<(int Slot, TriggerOp[] Before, TriggerOp[] After)> pendingScripts;
 
         /// <summary>
@@ -74,9 +77,23 @@ namespace U9Editor.Core
             foreach (var o in Objects.All) Objects.Refresh(o, space);
         }
 
-        public bool FixedChanged => fixedVersion != fixedSaved;
-        public bool NonfixedChanged => nonfixedVersion != nonfixedSaved;
-        public bool ScriptsChanged => scriptVersion != scriptSaved;
+        // A file has unsaved changes when the newest step on the undo stack that touches it is not the one that was
+        // newest when it was saved (0: none). Unlike counting steps up and down, an undo followed by a new edit is
+        // still a change.
+        long fixedSavedAt, nonfixedSavedAt, scriptsSavedAt, terrainSavedAt;
+        long TopTouching(Func<Step, bool> touches)
+        {
+            for (int i = undo.Count - 1; i >= 0; i--) if (touches(undo[i])) return undo[i].Id;
+            return 0;
+        }
+        bool Touches(Step s, ObjectMap m) => m != null && (s.Map == m || (s.Follow?.Any(f => f.Map == m) ?? false));
+        long FixedTop => TopTouching(s => Touches(s, Fixed));
+        long NonfixedTop => TopTouching(s => Touches(s, Nonfixed));
+        long ScriptsTop => TopTouching(s => s.Scripts != null);
+        long TerrainTop => TopTouching(s => s.Terrain != null || s.Water != null);
+        public bool FixedChanged => FixedTop != fixedSavedAt;
+        public bool NonfixedChanged => NonfixedTop != nonfixedSavedAt;
+        public bool ScriptsChanged => ScriptsTop != scriptsSavedAt;
         public bool HasChanges => FixedChanged || NonfixedChanged || ScriptsChanged || TerrainChanged;
         public string UndoDescription => undo.Count > 0 ? undo[^1].Description : null;
         public string RedoDescription => redo.Count > 0 ? redo[^1].Description : null;
@@ -193,13 +210,14 @@ namespace U9Editor.Core
                 foreach (var f in Enumerable.Reverse(s.Follow)) { f.Map.Undo(f.Edit); Bump(f.Map, -1); Publish(f.Edit); }
             if (s.Terrain != null) { ApplyTerrain(s.Terrain, after: false); terrainVersion--; }
             if (s.Water is { } wu) { SetWater(wu.Before); terrainVersion--; }
+            // scripts first: listeners of Changed rebuild the link list from them
+            if (s.Scripts != null) { foreach (var sc in Enumerable.Reverse(s.Scripts)) Scripts.Set(sc.Slot, sc.Before); scriptVersion--; }
             if (s.Map != null)
             {
                 s.Map.Undo(s.Edit);
                 Bump(s.Map, -1);
                 Publish(s.Edit);
             }
-            if (s.Scripts != null) { foreach (var sc in Enumerable.Reverse(s.Scripts)) Scripts.Set(sc.Slot, sc.Before); scriptVersion--; }
             redo.Add(s);
             return s.Description;
         }
@@ -258,7 +276,7 @@ namespace U9Editor.Core
         public ObjectFileKind KindFor(int type)
         {
             int f = Fixed?.Objects.Count(o => o.Type == type) ?? 0, n = Nonfixed?.Objects.Count(o => o.Type == type) ?? 0;
-            if (f == n && Templates != null) (f, n) = Templates.Count(type);
+            if (f == 0 && n == 0 && Templates != null) (f, n) = Templates.Count(type);
             if (f != n) return f > n ? ObjectFileKind.Fixed : ObjectFileKind.Nonfixed;
             if (Nonfixed == null) return ObjectFileKind.Fixed;
             if (Fixed == null) return ObjectFileKind.Nonfixed;
@@ -376,6 +394,7 @@ namespace U9Editor.Core
         /// </summary>
         public List<string> Save(string fixedPath, string nonfixedPath)
         {
+            if (InStroke) EndStroke();
             var written = new List<string>();
             if (ScriptsChanged && Scripts != null)
             {
@@ -383,11 +402,11 @@ namespace U9Editor.Core
                 if (File.Exists(Scripts.Path) && !File.Exists(backup)) File.Copy(Scripts.Path, backup);
                 Scripts.Save();
                 written.Add(Scripts.Path);
-                scriptSaved = scriptVersion;
+                scriptsSavedAt = ScriptsTop;
             }
-            if (FixedChanged && Fixed != null && fixedPath != null) { Write(Fixed, fixedPath); written.Add(fixedPath); fixedSaved = fixedVersion; }
-            if (NonfixedChanged && Nonfixed != null && nonfixedPath != null) { Write(Nonfixed, nonfixedPath); written.Add(nonfixedPath); nonfixedSaved = nonfixedVersion; }
-            if (TerrainChanged && Terrain != null && TerrainPath != null) { Terrain.ShareCopiedChunks(); Write(Terrain.ToBytes(), TerrainPath); written.Add(TerrainPath); terrainSaved = terrainVersion; }
+            if (FixedChanged && Fixed != null && fixedPath != null) { Write(Fixed, fixedPath); written.Add(fixedPath); fixedSavedAt = FixedTop; }
+            if (NonfixedChanged && Nonfixed != null && nonfixedPath != null) { Write(Nonfixed, nonfixedPath); written.Add(nonfixedPath); nonfixedSavedAt = NonfixedTop; }
+            if (TerrainChanged && Terrain != null && TerrainPath != null) { Terrain.ShareCopiedChunks(); Write(Terrain.ToBytes(), TerrainPath); written.Add(TerrainPath); terrainSavedAt = TerrainTop; }
             return written;
         }
 

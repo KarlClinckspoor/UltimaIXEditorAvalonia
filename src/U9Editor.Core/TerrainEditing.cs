@@ -58,8 +58,10 @@ namespace U9Editor.Core
         public TerrainMap Terrain { get; set; }
         /// <summary>Where <see cref="Save"/> writes the terrain.</summary>
         public string TerrainPath { get; set; }
-        public bool TerrainChanged => terrainVersion != terrainSaved;
-        int terrainVersion, terrainSaved;
+        public bool TerrainChanged => TerrainTop != terrainSavedAt;
+        int terrainVersion;
+        /// <summary>Whether the last stroke ended changed anything (and so is on the undo stack).</summary>
+        public bool LastStrokeChanged { get; private set; }
 
         /// <summary>The water level changed: the new level as stored (quarter point heights).</summary>
         public event Action<int> WaterEdited;
@@ -276,6 +278,7 @@ namespace U9Editor.Core
             stroke = null;
             strokeHeights = null;
             if (s == null) return;
+            LastStrokeChanged = false;
             // points put back as they were by the stroke itself are no change
             foreach (var k in s.Points.Where(kv => kv.Value.Before == kv.Value.After).Select(kv => kv.Key).ToList()) s.Points.Remove(k);
             if (s.IsEmpty) return;
@@ -284,6 +287,7 @@ namespace U9Editor.Core
             undo.Add(step);
             redo.Clear();
             terrainVersion++;
+            LastStrokeChanged = true;
         }
 
         /// <summary>Moves objects that stood on the ground before the stroke onto the ground after it.</summary>

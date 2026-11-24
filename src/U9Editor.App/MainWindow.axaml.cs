@@ -705,11 +705,16 @@ namespace U9Editor.App
         {
             View.InvalidatePoints(x, row, w, h);
             if (editor == null || !editor.InStroke) return;
+            var now = new HashSet<SceneObject>();
             foreach (var (o, z) in editor.FollowPreview())
             {
                 View.Preview(o, o.Source.MapX, o.Source.MapY, z, o.Source.Rotation);
-                followPreviewed.Add(o);
+                now.Add(o);
             }
+            var back = followPreviewed.Where(o => !now.Contains(o)).ToList();
+            if (back.Count > 0) View.RefreshEdited(back, false);
+            followPreviewed.Clear();
+            followPreviewed.UnionWith(now);
         }
 
         void OnWaterEdited(int stored)
@@ -903,7 +908,7 @@ namespace U9Editor.App
                 View.SetTextures(textures);
                 FillPalette();
             }
-            StatusText.Text = editor.UndoDescription != null ? $"Terrain: {editor.UndoDescription} (Ctrl+Z takes it back)." : "Nothing changed.";
+            StatusText.Text = editor.LastStrokeChanged ? $"Terrain: {editor.UndoDescription} (Ctrl+Z takes it back)." : "Nothing changed.";
             UpdateTitle();
         }
 

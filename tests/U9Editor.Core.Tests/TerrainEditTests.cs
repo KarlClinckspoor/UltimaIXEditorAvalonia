@@ -179,6 +179,37 @@ namespace U9Editor.Core.Tests
         }
 
         [Fact]
+        public void UndoThenANewStrokeAfterSavingIsStillUnsaved()
+        {
+            var ed = Britannia(out var keep);
+            using (keep)
+            {
+                string dir = Path.Combine(Path.GetTempPath(), "u9terrain-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(dir);
+                try
+                {
+                    ed.TerrainPath = Path.Combine(dir, "terrain.9");
+                    File.WriteAllBytes(ed.TerrainPath, ed.Terrain.ToBytes());
+                    var b = new TerrainBrush { Tool = TerrainTool.Raise, Radius = 2, Strength = 30, ObjectsFollow = false };
+                    ed.BeginStroke(b); ed.Dab(600, 600); ed.EndStroke();
+                    ed.Save(null, null);
+                    Assert.False(ed.HasChanges);
+                    ed.Undo();
+                    Assert.True(ed.HasChanges);                 // the file holds the stroke, the editor does not
+                    ed.BeginStroke(b); ed.Dab(610, 610); ed.EndStroke();
+                    Assert.True(ed.HasChanges);                 // was false with step counters
+                    // saving during a stroke finishes it first, so it is saved whole
+                    ed.BeginStroke(b); ed.Dab(620, 620);
+                    ed.Save(null, null);
+                    Assert.False(ed.InStroke);
+                    Assert.False(ed.HasChanges);
+                    Assert.Equal(ed.Raster.HeightAt(620, 620), TerrainMap.Load(ed.TerrainPath).GetPoint(620, 620).Height);
+                }
+                finally { Directory.Delete(dir, true); }
+            }
+        }
+
+        [Fact]
         public void SavingWritesTheTerrainAndKeepsTheOriginal()
         {
             var ed = Britannia(out var keep);
