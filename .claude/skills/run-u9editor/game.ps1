@@ -1,7 +1,8 @@
 # Drives u9.exe (with tools/game-test.ps1's U9GL in) for in-game tests.
 #   game.ps1 front                      bring the game (and U9GL's window) to the front
 #   game.ps1 tap <key> [<key> ...]      press keys one after another: esc, enter, space, up, down, left, right,
-#                                       a..z, 0..9, f1..f12, or ctrl+<key>
+#                                       home, end, pageup, pagedown, insert, delete, a..z, 0..9, f1..f12, or
+#                                       ctrl+<key> (ctrl+delete pulls the camera way out, ctrl+end out a step)
 #   game.ps1 hold <key> <ms>            hold a key down (walking: hold up 1500)
 #   game.ps1 shot                       Ctrl+P in the game; moves the new u9-<n>-after.png to %TEMP%\u9game-<n>.png
 #   game.ps1 log [<n>]                  the last n lines (default 15) of U9GL's log, %TEMP%\u9log.txt
@@ -35,7 +36,8 @@ function Front {
 }
 
 function Vk([string]$k) {
-    $named = @{ esc = 0x1B; enter = 0x0D; space = 0x20; tab = 0x09; up = 0x26; down = 0x28; left = 0x25; right = 0x27; ctrl = 0x11; shift = 0x10; alt = 0x12; backquote = 0xC0 }
+    $named = @{ esc = 0x1B; enter = 0x0D; space = 0x20; tab = 0x09; up = 0x26; down = 0x28; left = 0x25; right = 0x27; ctrl = 0x11; shift = 0x10; alt = 0x12; backquote = 0xC0;
+                home = 0x24; end = 0x23; pageup = 0x21; pagedown = 0x22; insert = 0x2D; delete = 0x2E }
     if ($named.ContainsKey($k)) { return [byte]$named[$k] }
     if ($k -match '^f(\d+)$') { return [byte](0x6F + [int]$Matches[1]) }
     if ($k.Length -eq 1) { return [byte][char]$k.ToUpper() }
