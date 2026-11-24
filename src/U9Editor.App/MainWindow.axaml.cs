@@ -55,12 +55,13 @@ namespace U9Editor.App
             InitializeComponent();
             if (Program.Width > 0 && Program.Height > 0) { Width = Program.Width; Height = Program.Height; }
             NorthItem.IsChecked = settings.NorthIsRowZero;
-            View.Hovered += h => StatusText.Text = objectStatus ?? Describe(h, "");
-            View.Picked += h => StatusText.Text = objectStatus ?? Describe(h, "selected ");
+            // the hover readout has its own place, so messages about edits stay until the next one
+            View.Hovered += h => HoverText.Text = objectStatus ?? Describe(h, "");
+            View.Picked += h => HoverText.Text = objectStatus ?? Describe(h, "selected ");
             View.ObjectHovered += o => objectStatus = o?.ToString();
             View.ObjectPicked += o => { objectStatus = o != null ? "selected " + o : null; Select(o); };
             View.ObjectDragging += (o, x, y, z) => StatusText.Text = $"moving {o.Name ?? "type " + o.Source.Type} to ({x / 128.0:F2}, {y / 128.0:F2}) z {z}   (Esc puts it back)";
-            View.ObjectDragged += (o, x, y, z) => Edit(() => editor.Move(o, x, y, z));
+            View.ObjectDragged += (o, x, y, z) => Edit(() => { editor.Move(o, x, y, z); StatusText.Text = Moved(o); });
             View.FollowTerrain = true;
             View.CameraChanged += () => Compass.RenderTransform = new Avalonia.Media.RotateTransform(-View.Camera.Yaw);
             View.FrameDrawn += OnFrameDrawn;
@@ -167,7 +168,7 @@ namespace U9Editor.App
                            $"{textures?.Layers.Count ?? 0} texture frames, " +
                            $"{View.Objects?.All.Count(o => o.Kind == ObjectFileKind.Fixed) ?? 0} fixed and {View.Objects?.All.Count(o => o.Kind == ObjectFileKind.Nonfixed) ?? 0} nonfixed objects, " +
                            $"{modelScene?.Batches.Count ?? 0} models ({modelScene?.Triangles ?? 0} triangles)" + (textures?.Missing.Count > 0 ? $" ({textures.Missing.Count} missing)" : "");
-            StatusText.Text = "Left drag orbits, middle or Shift+drag pans, wheel zooms, W/A/S/D move, Q/E turn, click selects a point.";
+            StatusText.Text = "Click selects, dragging the selection moves it. Drag orbits, Shift+drag pans, wheel zooms, W/A/S/D move.";
         }
 
         ObjectMap LoadObjectFile(string folder, string name, int number, ObjectFileKind kind)
@@ -195,6 +196,7 @@ namespace U9Editor.App
                 editor = new MapEditor(number, fx, nf, SceneObjects.Build(fx, nf, space, typeNames), space, raster);
             }
             editor.Changed += OnObjectsChanged;
+            View.Editor = editor;       // without it the view cannot start a drag
             currentNonfixed = editor.Nonfixed;
             return editor.Objects;
         }
@@ -275,8 +277,11 @@ namespace U9Editor.App
             float turn = yaw - MapEditor.Yaw(s.Rotation);
             System.Numerics.Quaternion? q = Math.Abs(turn) > 0.05f ? MapEditor.Turned(s.Rotation, turn) : null;
             var o = selected;
-            Edit(() => editor.Move(o, (int)Math.Round(x * 128), (int)Math.Round(row * 128), z, q));
+            Edit(() => { editor.Move(o, (int)Math.Round(x * 128), (int)Math.Round(row * 128), z, q); StatusText.Text = Moved(o); });
         }
+
+        static string Moved(SceneObject o) =>
+            $"Moved {o.Name ?? "type " + o.Source.Type} to ({o.Source.MapX / 128.0:F2}, {o.Source.MapY / 128.0:F2}) z {o.Source.Z}. Ctrl+Z takes it back.";
 
         void OnDropToGround(object sender, RoutedEventArgs e)
         {
@@ -436,7 +441,8 @@ namespace U9Editor.App
 
         void OnFrameDrawn()
         {
-            GlText.Text = (View.GlError != null ? "GL error: " + View.GlError + "   " : "") + $"{View.LastFrameMs:F1} ms   {View.GlInfo}";
+            GlText.Text = (View.GlError != null ? "GL error: " + View.GlError + "   " : "") + $"{View.LastFrameMs:F1} ms";
+            ToolTip.SetTip(GlText, View.GlInfo);
             if (Program.ScreenshotPath != null && !screenshotTaken && terrain != null)
             {
                 screenshotTaken = true;
@@ -452,6 +458,8 @@ namespace U9Editor.App
         void OnWindowKeyDown(object sender, KeyEventArgs e)
         {
             lastModifiers = e.KeyModifiers;
+            // saving works from anywhere, a panel field included; other keys belong to the field while typing
+            if (e.Key == Key.S && (e.KeyModifiers & KeyModifiers.Control) != 0) { OnSave(null, null); e.Handled = true; return; }
             if (e.Source is TextBox || e.Source is ComboBox) return;
             if (EditKey(e)) { e.Handled = true; return; }
             if (e.Key == Key.Tab) { TopDownItem.IsChecked = !TopDownItem.IsChecked; OnToggleTopDown(null, null); e.Handled = true; return; }

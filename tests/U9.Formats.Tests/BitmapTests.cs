@@ -49,5 +49,20 @@ namespace U9.Formats.Tests
             }
             Assert.True(frames > 6599);
         }
+
+        [Fact]
+        public void MagentaIsTransparent()
+        {
+            using var a = U9.Formats.Flx.FlxArchive.Open(GameData.PathOf(System.IO.Path.Combine("static", "bitmap16.flx")));
+            foreach (int record in new[] { 1765, 2501 })      // ARGB1555 and RGB565 frames that are all, or nearly all, key colour
+            {
+                var f = Bitmap16.ReadFrame(a.Read(record), 0);
+                int clear = 0;
+                for (int i = 3; i < f.Rgba.Length; i += 4) if (f.Rgba[i] == 0) clear++;
+                Assert.True(clear > f.Width * f.Height * 0.9, $"record {record}: {clear} of {f.Width * f.Height} transparent");
+                for (int i = 0; i < f.Rgba.Length; i += 4)
+                    Assert.False(f.Rgba[i + 3] != 0 && f.Rgba[i] > 240 && f.Rgba[i + 1] < 8 && f.Rgba[i + 2] > 240, $"record {record}: opaque magenta left");
+            }
+        }
     }
 }

@@ -18,6 +18,13 @@ namespace U9.Formats.Models
         public int Frame;
         /// <summary>Face colour, RGBA.</summary>
         public uint Colour;
+        /// <summary>Face flags (+0x54).</summary>
+        public uint Flags;
+        /// <summary>
+        /// Flag bit 3: a face the game does not draw (blocking walls and the like). Of the 580 untextured faces in
+        /// sappear.flx coloured pure magenta, 579 have it, and no other face does.
+        /// </summary>
+        public bool Invisible => (Flags & 8) != 0;
     }
 
     /// <summary>
@@ -32,7 +39,7 @@ namespace U9.Formats.Models
     /// mount faces, vertices, mount vertices, max face, materials), +0x54 offsets (faces, mount faces, vertices, mount
     /// vertices, materials, 4 sorted face lists), all relative to L + 4.</para>
     /// <para>Face (0x7C): three corners of 0x1C bytes (+0 u32 vertex index, +4 u32 ignored, +8 vec3 normal, +0x14
-    /// vec2 UV with v = 0 at the texture's top row; UVs wrap), +0x54 u32 flags, +0x60 vec3 face normal, +0x70 RGBA
+    /// vec2 UV with v = 0 at the texture's top row; UVs wrap), +0x54 u32 flags (bit 3: not drawn), +0x60 vec3 face normal, +0x70 RGBA
     /// colour. Vertex: vec3 f32. Material (0x18): +0 u16 texture (bitmap16.flx record, 0xFFFF = use the face colour),
     /// +8 u16 first face, +0xA u16 face count, +0xE u8 first animation frame, +0xF u8 last.</para>
     /// <para>Model space: x east, y north, z up, in object units (128 per terrain point); fronts face -y (south).
@@ -118,7 +125,11 @@ namespace U9.Formats.Models
                 for (int i = 0; i < faces; i++)
                 {
                     int f = B + fo + 0x7C * i;
-                    var t = new ModelTriangle { Texture = tex[i], Frame = frame[i], Colour = BinaryPrimitives.ReadUInt32LittleEndian(r.AsSpan(f + 0x70)) };
+                    var t = new ModelTriangle
+                    {
+                        Texture = tex[i], Frame = frame[i], Colour = BinaryPrimitives.ReadUInt32LittleEndian(r.AsSpan(f + 0x70)),
+                        Flags = BinaryPrimitives.ReadUInt32LittleEndian(r.AsSpan(f + 0x54)),
+                    };
                     for (int k = 0; k < 3; k++)
                     {
                         int c = f + 0x1C * k;

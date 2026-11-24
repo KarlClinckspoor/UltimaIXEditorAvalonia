@@ -225,12 +225,33 @@ namespace U9Editor.App
             if (Editor == null || objects == null || State.SelectedObject < 0) return;
             var hit = PickAt(p);
             var ob = PickObjectAt(p, hit);
-            if (ob == null || ob.Id != State.SelectedObject) return;
+            if (ob == null || ob.Id != State.SelectedObject)
+            {
+                // grabbing needs no exact hit: anywhere inside the selection's bounding sphere, or near its marker
+                ob = State.SelectedObject < objects.All.Count ? objects.All[State.SelectedObject] : null;
+                if (ob == null || ob.Source.Removed || !NearSelection(ob, p)) return;
+            }
             if (!RayToHeight(p, ob.World.Y, out dragGrab)) return;
             dragObject = ob;
             dragStartWorld = ob.World;
             dragX = ob.Source.MapX; dragY = ob.Source.MapY; dragZ = ob.Source.Z;
             dragGroundOffset = ob.Source.Z - Editor.GroundZ(dragX, dragY);
+        }
+
+        bool NearSelection(SceneObject o, Point p)
+        {
+            Camera.Ray((float)p.X, (float)p.Y, (float)Bounds.Width, (float)Bounds.Height, out var origin, out var dir);
+            if (o.Model >= 0 && ModelsDrawn)
+            {
+                var oc = o.BoundCentre - origin;
+                float along = Vector3.Dot(oc, dir);
+                if (along > 0 && (oc - dir * along).LengthSquared() <= o.BoundRadius * o.BoundRadius) return true;
+            }
+            var vp = Camera.View * Camera.Projection((float)(Bounds.Width / Math.Max(1, Bounds.Height)));
+            var c = Vector4.Transform(new Vector4(o.World, 1), vp);
+            if (c.W <= 0.01f) return false;
+            float sx = (c.X / c.W * 0.5f + 0.5f) * (float)Bounds.Width, sy = (0.5f - c.Y / c.W * 0.5f) * (float)Bounds.Height;
+            return (sx - p.X) * (sx - p.X) + (sy - p.Y) * (sy - p.Y) <= 12 * 12;
         }
 
         void DragObjectTo(Point p)

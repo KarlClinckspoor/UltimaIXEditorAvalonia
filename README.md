@@ -39,6 +39,7 @@ deletes, Ctrl+Z / Ctrl+Y undo and redo, Ctrl+S saves. Saving writes `static/fixe
 every changed map; the first save keeps each original beside it as `.orig`. Saved games most likely carry their
 own copy of the nonfixed objects (not checked yet), so try nonfixed changes in a new game.
 Start options for scripted pictures: `--look X,ROW --distance D --pitch P --yaw Y`.
+Agents drive the running editor with `.claude/skills/run-u9editor/driver.ps1` (see its `SKILL.md`).
 
 ## Format status
 
@@ -89,4 +90,7 @@ Map space (used by the editor):
   corner, 6-8 edge): neighbouring transition quads agree on their shared corners in 98.2% of Britannia's 80,498
   pairs under this reading, 40% under swap/mirror. Bit 15 does not orient the texture. All three bits are spread
   evenly over plain ground too, which is turned at random to hide the tiling. `u9 bitmap-frames` shows a set.
+- Bitmaps: pure magenta (RGB565 0xF81F, ARGB1555 0x7C1F, even with the opaque bit) is a colour key for
+  transparent pixels. Model faces with flag bit 3 are not drawn: they are the untextured magenta blocking walls
+  (579 of the 580 magenta untextured faces in `sappear.flx`, and no other face), such as Moonglow's.
 - Bitmap pixel format is the low nibble of frame byte 1: 3 = 8-bit intensity, 4 = RGB565, 5 = ARGB1555.

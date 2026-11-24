@@ -53,6 +53,19 @@ namespace U9Editor.Core.Tests
         }
 
         [Fact]
+        public void InvisibleFacesAreTheMagentaOnes()
+        {
+            var g = Game();
+            using var sap = FlxArchive.Open(Path.Combine(g.StaticFolder, "sappear.flx"));
+            // model 1244 (type 2418, in Moonglow) has a limb of magenta blocking faces
+            var tris = SappearModel.Triangles(sap.Read(1244));
+            var hidden = tris.Where(t => t.Invisible).ToList();
+            Assert.Equal(12, hidden.Count);
+            Assert.All(hidden, t => Assert.Equal(0xFF00FFu, t.Colour & 0xFFFFFF));
+            Assert.DoesNotContain(tris, t => !t.Invisible && t.Texture < 0 && (t.Colour & 0xFFFFFF) == 0xFF00FF);
+        }
+
+        [Fact]
         public void PlacementPutsTheModelOriginAtTheObject()
         {
             var g = Game();

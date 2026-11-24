@@ -103,6 +103,7 @@ namespace U9Editor.Core
                     int first = growing.Count / VertexFloats;
                     var min = new Vector3(float.MaxValue);
                     var max = new Vector3(float.MinValue);
+                    tris.RemoveAll(t => t.Invisible);      // blocking walls, drawn magenta otherwise
                     foreach (var t in tris)
                     {
                         int layer = Layer(t.Texture, t.Frame);

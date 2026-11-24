@@ -28,6 +28,9 @@ namespace U9.Formats.Bitmaps
     /// green, 0-4 blue, bit 15 set = opaque (alpha-tested textures, interface pictures such as the world map, record
     /// 534); 3 = 8-bit intensity, no palette (glow, smoke, lightning: returned as grey with alpha = value). Checked by
     /// eye on terrain textures 1, 2, 8, 10, 11, 24, 36, 46 and on record 534.</para>
+    /// <para>Pure magenta (RGB565 0xF81F, ARGB1555 0x7C1F with or without the opaque bit) is a colour key: those
+    /// pixels are not drawn. 28 RGB565 and 26 ARGB1555 records use it, some for the whole frame (records 1765 and
+    /// 2501: invisible walls, such as Moonglow's); they come back fully transparent.</para>
     /// <para>Terrain: a point's texture number is the record number and its frame number the frame.</para>
     /// </summary>
     public static class Bitmap16
@@ -72,6 +75,8 @@ namespace U9.Formats.Bitmaps
                         continue;
                     }
                     ushort v = BinaryPrimitives.ReadUInt16LittleEndian(f.Slice((int)ro + x * 2));
+                    // pure magenta is the colour key for "not drawn" in both formats, even with the opaque bit set
+                    if (format == 4 ? v == 0xF81F : (v & 0x7FFF) == 0x7C1F) continue;     // left transparent black
                     if (format == 4)
                     {
                         rgba[o] = Expand(v >> 11);
