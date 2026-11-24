@@ -53,6 +53,12 @@ flattens (to a typed height, or the height under the first dab), paints a textur
 holes; right drag still orbits. Holding the mouse still keeps the height tools working. Objects standing on the
 ground (within 16 object units) go up and down with it; things on tables and floors stay where they are. Each
 stroke is one undo step, objects included. Painting a texture the map did not use adds it to the view's textures.
+With Blend edges on, painting lays the texture as ground on the points' corners and gives the quads along the
+edge the map's transition frames into what was there, as the shipped maps do. Which plain textures a transition
+set blends is learnt from the map itself: plain quads beside transition quads vote for the side they touch (on
+Britannia set 10 is grass 8 into dirt 11, 11,896 and 14,602 votes against a few hundred); 13 of Britannia's 14
+sets are clear, and the panel says which textures the chosen one blends into. The map's own transition quads come
+back from their corner materials in over 99% of cases. Against ground with no transition the edge stays hard.
 Texture from selected point takes the texture and frame of a ground point clicked with the brush off. Saving
 writes `static/terrain.N` (first time keeping `.orig`). Checked in the game: a hill raised at Britannia's bridge
 (height 607 to 907) put the Avatar on its top at z 3626 (the editor reckons 3628).

@@ -707,6 +707,7 @@ namespace U9Editor.App
                 CutHole = tool != 6,
                 Radius = (float)BrushRadius.Value,
                 RandomTurn = BrushTurn.IsChecked == true,
+                Blend = BrushBlend.IsChecked == true,
                 ObjectsFollow = BrushFollow.IsChecked == true,
             };
             b.Strength = b.Tool is TerrainTool.Smooth or TerrainTool.Flatten ? (float)BrushStrength.Value / 100f : (float)Math.Round(BrushStrength.Value);
@@ -718,8 +719,9 @@ namespace U9Editor.App
 
         void OnBrushChanged(object sender, RoutedEventArgs e)
         {
-            if (View == null || BrushRadius == null || BrushTurn == null) return;      // during InitializeComponent
+            if (View == null || BrushRadius == null || BrushTurn == null || BrushBlend == null || BlendInfo == null) return;      // during InitializeComponent
             if (View.Brush != null) View.Brush = MakeBrush();
+            ShowBlendInfo();
         }
 
         void OnBrushSlider(object sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
@@ -731,6 +733,17 @@ namespace U9Editor.App
         }
 
         void OnBrushFieldKey(object sender, KeyEventArgs e) => OnBrushChanged(null, null);
+
+        void ShowBlendInfo()
+        {
+            if (editor?.Raster == null || BrushTool.SelectedIndex != 4 || BrushBlend.IsChecked != true) { BlendInfo.Text = ""; return; }
+            int t = MakeBrush().Texture;
+            var tr = editor.Transitions;
+            if (tr.IsTransition(t)) { BlendInfo.Text = $"Texture {t} is a transition set ({tr.Sets[t]}): paint one of the plain textures it blends."; return; }
+            var partners = tr.Sets.Values.Where(s => s.A == t || s.B == t).Select(s => s.A == t ? s.B : s.A).Distinct().OrderBy(x => x).ToList();
+            BlendInfo.Text = partners.Count == 0 ? $"This map has no transitions for texture {t}: its edges stay hard." :
+                $"Texture {t} blends into {string.Join(", ", partners)} on this map; edges against others stay hard.";
+        }
 
         void OnBrushPickTexture(object sender, RoutedEventArgs e)
         {

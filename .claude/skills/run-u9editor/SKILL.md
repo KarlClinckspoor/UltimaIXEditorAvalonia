@@ -44,7 +44,9 @@ drags it onto the road, undoes the drag and reads the status bar. Read every PNG
 
 Terrain brush: `key "b"` turns it on (Terrain tab, Raise), then `drag 420 650 600 560` raises a ridge across the
 road in the view above (the title gains ` *`, the status bar says `Terrain: raise`), `key "^z"` takes it back. The
-tool list is the combo box at 1135,351; with it open, Paint texture is at 1135,493. A drag of that length at
+tool list is the combo box at 1135,351; with it open, Paint texture is at 1135,493; the Texture field is at
+1245,495 (`click 1245 495` then `key "^a11{TAB}"`). On Britannia `--look 440,540 --distance 40 --top-down` shows
+open grass at the upper left to paint into (`drag 120 380 250 420`); the panel names what the texture blends into. A drag of that length at
 strength 20 builds a hill some 45 units high: the default (6) is gentler.
 
 | Command | Does |
@@ -122,6 +124,8 @@ into them with an explicit z rather than walking. Read the position with `pos` b
 - Keys reach the game with `keybd_event` and scan codes from `MapVirtualKey` (arrows need the extended flag);
   `game.ps1` does that. The game draws its own mouse cursor, so mouse clicks miss: use keys (`game.ps1 quit` is
   Ctrl+X, then Enter on the dialog).
+- `start_at` on Moonglow (map 4) makes the game shut down (cleanly, no crash report) during the teleport, with or
+  without a height; Britannia (map 9) works. Test Moonglow edits some other way for now.
 - The console stays open after a command; a teleport closes it. Typing goes to the console while it is open.
 - A new game copies `runtime/nonfixed.N`: back up the files the editor saves (and delete their `.orig`) to put
   the game folder back afterwards.

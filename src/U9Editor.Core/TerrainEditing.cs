@@ -22,6 +22,12 @@ namespace U9Editor.Core
         public int Texture, Frame;
         /// <summary>Paint: turn each painted quad a random quarter turn, as the game does on plain ground.</summary>
         public bool RandomTurn = true;
+        /// <summary>
+        /// Paint: lay the texture as a material on the points' corners and give the quads along the edge the map's
+        /// transition frames into what was there (see <see cref="TerrainTransitions"/>). Where the map has no
+        /// transition between the two, a quad takes the new texture when three of its corners have it.
+        /// </summary>
+        public bool Blend;
         /// <summary>Hole: true cuts holes, false fills them.</summary>
         public bool CutHole = true;
         /// <summary>Objects standing on the ground (within <see cref="FollowTolerance"/>) go up and down with it.</summary>
@@ -56,6 +62,11 @@ namespace U9Editor.Core
         Dictionary<int, float> strokeHeights;
         int strokeFlatten;
         Random turns = new Random(9);
+        HashSet<int> strokeCorners;
+        TerrainTransitions transitions;
+
+        /// <summary>The map's transition textures, learnt from its terrain the first time they are needed.</summary>
+        public TerrainTransitions Transitions => transitions ??= TerrainTransitions.Learn(Raster);
 
         public bool InStroke => stroke != null;
 
@@ -66,6 +77,7 @@ namespace U9Editor.Core
             stroke = new TerrainChange();
             strokeBrush = brush;
             strokeHeights = new Dictionary<int, float>();
+            strokeCorners = new HashSet<int>();
             strokeFlatten = -1;
         }
 
@@ -78,6 +90,7 @@ namespace U9Editor.Core
             int x0 = Math.Max(0, (int)Math.Floor(x - r)), x1 = Math.Min(Raster.Width - 1, (int)Math.Ceiling(x + r));
             int y0 = Math.Max(0, (int)Math.Floor(row - r)), y1 = Math.Min(Raster.Height - 1, (int)Math.Ceiling(row + r));
             if (x1 < x0 || y1 < y0) return;
+            if (b.Tool == TerrainTool.Paint && b.Blend) { BlendDab(x, row, r, x0, y0, x1, y1); return; }
             if (b.Tool == TerrainTool.Flatten && strokeFlatten < 0)
                 strokeFlatten = b.FlattenTo ?? (int)MathF.Round(Raster.HeightAt(x, row));
             // the raster keeps the heights from before this dab until the end of it, so smoothing reads those
@@ -130,6 +143,55 @@ namespace U9Editor.Core
                 Raster.Refresh(Terrain, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
                 TerrainEdited?.Invoke(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
             }
+        }
+
+        void BlendDab(float x, float row, float r, int x0, int y0, int x1, int y1)
+        {
+            var tr = Transitions;
+            int m = strokeBrush.Texture, w = Raster.Width;
+            var quads = new HashSet<int>();
+            for (int py = y0; py <= y1; py++)
+                for (int px = x0; px <= x1; px++)
+                {
+                    if ((px - x) * (px - x) + (py - row) * (py - row) > r * r) continue;
+                    if (!strokeCorners.Add(px + py * w)) continue;
+                    for (int qy = py - 1; qy <= py; qy++)
+                        for (int qx = px - 1; qx <= px; qx++)
+                            if (qx >= 0 && qy >= 0 && qx < w - 1 && qy < Raster.Height - 1) quads.Add(qx + qy * w);
+                }
+            if (quads.Count == 0) return;
+            var corners = new int[4];
+            var now = new int[4];
+            int ax0 = int.MaxValue, ay0 = int.MaxValue, ax1 = -1, ay1 = -1;
+            foreach (int i in quads)
+            {
+                int qx = i % w, qy = i / w;
+                var before = new TerrainPoint(stroke.Points.TryGetValue(i, out var had) ? had.Before : Raster.Points[i]);
+                var cur = new TerrainPoint(Raster.Points[i]);
+                int painted = 0;
+                for (int k = 0; k < 4; k++)
+                {
+                    int u = k & 1, v = k >> 1;
+                    bool mine = strokeCorners.Contains(qx + u + (qy + v) * w);
+                    corners[k] = mine ? m : tr.CornerMaterial(before, u, v);
+                    now[k] = tr.CornerMaterial(cur, u, v);
+                    if (mine) painted++;
+                }
+                if (now.SequenceEqual(corners)) continue;     // already shows these corners: keep its frame and turn
+                int tex, frame, rot;
+                if (!tr.TryQuad(corners, turns, out tex, out frame, out rot))
+                {
+                    if (painted < 3) continue;
+                    tr.TryQuad(new[] { m, m, m, m }, turns, out tex, out frame, out rot);
+                }
+                var q = before.WithTexture(tex).WithFrame(frame).WithRotation(rot);
+                if (q == cur) continue;
+                Set(qx, qy, q);
+                ax0 = Math.Min(ax0, qx); ay0 = Math.Min(ay0, qy); ax1 = Math.Max(ax1, qx); ay1 = Math.Max(ay1, qy);
+            }
+            if (ax1 < 0) return;
+            Raster.Refresh(Terrain, ax0, ay0, ax1 - ax0 + 1, ay1 - ay0 + 1);
+            TerrainEdited?.Invoke(ax0, ay0, ax1 - ax0 + 1, ay1 - ay0 + 1);
         }
 
         static float Average(uint[] pts, int x, int y, int width, int height)

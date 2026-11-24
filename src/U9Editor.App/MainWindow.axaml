@@ -166,9 +166,12 @@
               </Grid>
               <WrapPanel>
                 <Button Content="Texture from selected point" Click="OnBrushPickTexture" Margin="0,0,4,4" FontSize="12" ToolTip.Tip="Click a ground point with the brush off, then this takes its texture and frame" />
+                <CheckBox x:Name="BrushBlend" Content="Blend edges" IsChecked="True" FontSize="12" Click="OnBrushChanged" Margin="0,0,8,0"
+                          ToolTip.Tip="Paint the texture as ground and give the edge the map's transition frames into what was there (the frame field is then not used)" />
                 <CheckBox x:Name="BrushTurn" Content="Random quarter turns" IsChecked="True" FontSize="12" Click="OnBrushChanged" Margin="0,0,8,0" />
                 <CheckBox x:Name="BrushFollow" Content="Objects follow the ground" IsChecked="True" FontSize="12" Click="OnBrushChanged" />
               </WrapPanel>
+              <TextBlock x:Name="BlendInfo" FontSize="11" TextWrapping="Wrap" />
               <TextBlock Opacity="0.6" FontSize="11" TextWrapping="Wrap"
                          Text="Strength: point heights (a quarter unit each) per dab for Raise and Lower, percent of the way per dab for Smooth and Flatten. Holding the mouse still keeps raising. Ctrl+Z takes back a whole stroke; Ctrl+S writes static/terrain.N (the first time keeping terrain.N.orig)." />
             </StackPanel>
