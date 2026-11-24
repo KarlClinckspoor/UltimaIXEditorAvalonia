@@ -25,6 +25,7 @@ namespace U9Editor.App
     {
         readonly Settings settings = Settings.Load();
         GameFolder game;
+        ObjectTemplates templates;
         FlxArchive bitmaps, appearances;
         TypeTable typeTable;
         ModelScene modelScene;
@@ -113,6 +114,7 @@ namespace U9Editor.App
         void OpenGame(GameFolder g, int mapNumber)
         {
             game = g;
+            templates = new ObjectTemplates(g.Root);
             settings.GameFolder = g.Root;
             bitmaps?.Dispose();
             bitmaps = null;
@@ -221,6 +223,7 @@ namespace U9Editor.App
             }
             editor.Scripts = triggerScripts;
             editor.Types = typeTable;
+            editor.Templates = templates;
             editor.Changed += OnObjectsChanged;
             editor.Terrain = terrain;
             editor.TerrainPath = current?.TerrainPath;

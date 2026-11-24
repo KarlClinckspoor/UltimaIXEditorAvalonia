@@ -32,7 +32,8 @@ R/F raise and lower, Tab toggles the top-down map, Home frames the map, click se
 the status bar). The Links panel lists the current map's map changes; double-click goes to where one leads.
 
 Placing objects: the Place object tab lists every type (those already on the map first, with how many); pick one,
-press Place and click the ground. The new record copies flags and model from one of its kind on the map.
+press Place and click the ground. The new record copies flags and model from one of its kind on the map, or failing that on any of the
+game's maps (read once, the first time it is needed); which file it goes in follows the same counts.
 
 Editing map links (Map links tab): select a link (or click its yellow zone), then Retarget selected sends it to the
 map and link in the fields; the zone gets a new TRIGGERS.FLX script slot, since 68 shipped scripts serve several

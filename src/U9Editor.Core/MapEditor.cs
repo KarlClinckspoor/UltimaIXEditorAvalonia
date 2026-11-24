@@ -28,6 +28,8 @@ namespace U9Editor.Core
         public TriggerScripts Scripts { get; set; }
         /// <summary>TYPES.DAT, for new objects' default models.</summary>
         public TypeTable Types { get; set; }
+        /// <summary>Objects on the game's other maps, for new objects of a type this map has none of; may be null.</summary>
+        public ObjectTemplates Templates { get; set; }
 
         sealed class Step
         {
@@ -221,7 +223,8 @@ namespace U9Editor.Core
 
         /// <summary>
         /// A record for a new object of a type: a copy of one already in the map's file of that kind (flags, model and
-        /// such as the game set them; position, link and properties are cleared or replaced), else a fresh one with no
+        /// such as the game set them; position, link and properties are cleared or replaced), else a copy of one on another
+        /// map (<see cref="Templates"/>), else a fresh one with no
         /// rotation and, nonfixed, the type's default model.
         /// </summary>
         public byte[] TemplateFor(ObjectFileKind kind, int type)
@@ -229,9 +232,11 @@ namespace U9Editor.Core
             var map = kind == ObjectFileKind.Fixed ? Fixed : Nonfixed;
             if (map == null) return null;
             var like = map.Objects.FirstOrDefault(o => o.Type == type);
-            var r = like != null ? like.Raw : new byte[map.RecordSize];
-            if (like == null)
+            var r = like?.Raw ?? Templates?.Find(kind, type);
+            if (r != null && r.Length != map.RecordSize) r = null;
+            if (r == null)
             {
+                r = new byte[map.RecordSize];
                 BitConverter.TryWriteBytes(r.AsSpan(0x0A), (ushort)type);
                 BitConverter.TryWriteBytes(r.AsSpan(0x12), (short)32767);
                 if (kind == ObjectFileKind.Nonfixed && Types != null) BitConverter.TryWriteBytes(r.AsSpan(0x18), (ushort)Math.Max(0, Types[type].DefaultModel));
@@ -247,6 +252,7 @@ namespace U9Editor.Core
         public ObjectFileKind KindFor(int type)
         {
             int f = Fixed?.Objects.Count(o => o.Type == type) ?? 0, n = Nonfixed?.Objects.Count(o => o.Type == type) ?? 0;
+            if (f == n && Templates != null) (f, n) = Templates.Count(type);
             if (f != n) return f > n ? ObjectFileKind.Fixed : ObjectFileKind.Nonfixed;
             if (Nonfixed == null) return ObjectFileKind.Fixed;
             if (Fixed == null) return ObjectFileKind.Nonfixed;

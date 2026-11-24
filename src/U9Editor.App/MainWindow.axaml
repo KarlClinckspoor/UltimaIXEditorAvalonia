@@ -129,7 +129,7 @@
                   <Button x:Name="PlaceButton" Content="Place" Click="OnPlace" />
                 </StackPanel>
                 <TextBlock Opacity="0.6" FontSize="11" TextWrapping="Wrap"
-                           Text="Pick a type, press Place, then click the ground. Esc cancels. The new object takes its flags from one of its kind already on the map." />
+                           Text="Pick a type, press Place, then click the ground. Esc cancels. The new object takes its flags from one of its kind already on the map, or on another map." />
               </StackPanel>
               <ListBox x:Name="PlaceList" FontSize="12" DoubleTapped="OnPlace" />
             </DockPanel>
