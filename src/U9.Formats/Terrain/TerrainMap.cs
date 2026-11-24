@@ -45,7 +45,8 @@ namespace U9.Formats.Terrain
         public float WaveAmplitude { get; set; }
         public uint Flags { get; set; }
 
-        /// <summary>Chunk number for each tile, index tileX + tileY * TilesX.</summary>
+        /// <summary>Chunk number for each tile, index tileX + tileY * TilesX. Change points through <see cref="SetPoint"/>,
+        /// not by writing here: it keeps count of how many tiles share each chunk.</summary>
         public ushort[] TileChunks { get; private set; } = Array.Empty<ushort>();
         public List<TerrainChunk> Chunks { get; } = new List<TerrainChunk>();
 
@@ -174,16 +175,27 @@ namespace U9.Formats.Terrain
             {
                 if (Chunks.Count >= ushort.MaxValue) throw new InvalidOperationException("Too many terrain chunks");
                 Chunks.Add(Chunks[TileChunks[tile]].Clone());
+                useCounts[TileChunks[tile]]--;
                 TileChunks[tile] = (ushort)(Chunks.Count - 1);
+                if (useCounts.Length > Chunks.Count - 1) useCounts[Chunks.Count - 1] = 1;
+                else useCountsOf = null;       // recount next time
             }
             Chunks[TileChunks[tile]][x % TileSize, y % TileSize] = p;
         }
 
+        // tiles using each chunk, counted once per tile table (a brush sets thousands of points a second)
+        int[] useCounts;
+        ushort[] useCountsOf;
+
         int ChunkUseCount(int chunk)
         {
-            int n = 0;
-            foreach (var c in TileChunks) if (c == chunk && ++n > 1) break;
-            return n;
+            if (useCountsOf != TileChunks || useCounts.Length < Chunks.Count)
+            {
+                useCounts = new int[Math.Max(Chunks.Count, 1) + 64];
+                foreach (var c in TileChunks) if (c < useCounts.Length) useCounts[c]++;
+                useCountsOf = TileChunks;
+            }
+            return chunk < useCounts.Length ? useCounts[chunk] : 0;
         }
     }
 }
