@@ -190,12 +190,17 @@ namespace U9Editor.App
             RefreshTypeList();
             View.FrameMap();
             if (lookAfterLoad is { } look) { View.LookAt(look.X, look.Row, 30); lookAfterLoad = null; }
+            ShowMapInfo();
+            StatusText.Text = "Click selects, dragging the selection moves it. Drag orbits, Shift+drag pans, wheel zooms, W/A/S/D move.";
+        }
+
+        void ShowMapInfo()
+        {
             MapInfo.Text = $"{terrain.Width}x{terrain.Height} points, {terrain.Chunks.Count} chunks, water at height {terrain.WaterHeight}, " +
                            $"waves {terrain.WaveAmplitude}, flags 0x{terrain.Flags:X}, " +
                            $"{textures?.Layers.Count ?? 0} texture frames, " +
                            $"{View.Objects?.All.Count(o => o.Kind == ObjectFileKind.Fixed) ?? 0} fixed and {View.Objects?.All.Count(o => o.Kind == ObjectFileKind.Nonfixed) ?? 0} nonfixed objects, " +
                            $"{modelScene?.Batches.Count ?? 0} models ({modelScene?.Triangles ?? 0} triangles)" + (textures?.Missing.Count > 0 ? $" ({textures.Missing.Count} missing)" : "");
-            StatusText.Text = "Click selects, dragging the selection moves it. Drag orbits, Shift+drag pans, wheel zooms, W/A/S/D move.";
         }
 
         ObjectMap LoadObjectFile(string folder, string name, int number, ObjectFileKind kind)
@@ -711,6 +716,7 @@ namespace U9Editor.App
         {
             View.SetWater(MapSpace.WorldY(0) + stored / 4f / MapSpace.HeightUnitsPerPoint);
             WaterHeight.Text = (stored / 4f).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+            ShowMapInfo();
             editors[editor.MapNumber] = editor;
             UpdateTitle();
         }
