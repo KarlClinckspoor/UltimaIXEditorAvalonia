@@ -1,6 +1,52 @@
 # U9 Editor
 
-A map editor for Ultima IX: Ascension, in C# with Avalonia (modelled on UltimaUnderworldEditorAvalonia).
+A map editor for **Ultima IX: Ascension** (Origin, 1999), written in C# (.NET 10) with Avalonia and OpenGL.
+It reads and writes the game's own files, so changes show up in the real game.
+
+> Fan project, not affiliated with or endorsed by Electronic Arts or Origin Systems. Ultima is a trademark of
+> Electronic Arts. No game files are included: you need your own copy of the game (the GOG release works).
+
+## What it does
+
+- **3D view of every map**: terrain with its textures and transitions, water, objects with their models,
+  trigger zones and map links. Orbit, pan, fly with W/A/S/D, or a top-down map view.
+- **Objects**: select, move (keeping height above the ground), turn, raise, copy, delete and place new ones of
+  any of the game's types, with undo and redo. Saves `fixed.N` and `nonfixed.N`.
+- **Map links**: retarget a door or cave to another map and arrival point, add new links and arrivals. Saves
+  the trigger scripts in `TRIGGERS.FLX`.
+- **Terrain**: brushes to raise, lower, smooth, flatten, roughen, paint textures (with the map's own blended
+  edges) and cut holes; objects on the ground follow it. Change the sea level. Saves `terrain.N`.
+- **Formats**: readers and writers for FLX archives, terrain, object files, types, models and bitmaps, tested
+  for byte-identical round trips over every shipped file.
+- Saving keeps each original file beside it as `.orig` the first time.
+
+Checked in the game: a retargeted cave link takes the Avatar to the new arrival, and a raised hill puts him on
+its top at the height the editor reckons.
+
+## Status and roadmap
+
+Usable for object, link and terrain editing on any map. Planned work is tracked as
+[milestones](https://github.com/KarlClinckspoor/UltimaIXEditorAvalonia/milestones):
+
+1. **In-game verification**: confirm terrain painting, blended edges and objects following the ground in the game.
+2. **Multi-select and group editing**: box and Ctrl+click selection; move, turn, copy and delete groups as one undo step.
+3. **Prefabs**: copy and paste a group of objects with its ground, also between maps.
+4. **Search and navigation**: find objects by type or name, jump to link destinations, bookmarks.
+5. **Object contents**: book texts, container contents, NPC and object properties.
+6. **New models through Blender**: import and export `sappear.flx` models via glTF.
+
+## Getting started
+
+You need the [.NET 10 SDK](https://dotnet.microsoft.com/download) and a copy of Ultima IX. Copy (or link) the
+installed game folder to `gamedata/` in the repository, or point `U9_GAMEDATA` at it. Work on a copy: the editor
+writes into the game's files.
+
+```
+dotnet build U9Editor.sln
+dotnet run --project src/U9Editor.App -- --gamedata gamedata --map 9
+```
+
+Map 9 is Britannia. Developed and tested on Windows; the editor needs OpenGL 3.3 (or GLES 3.0).
 
 ## Layout
 
@@ -13,11 +59,12 @@ A map editor for Ultima IX: Ascension, in C# with Avalonia (modelled on UltimaUn
 | `src/U9Editor.Cli` | `u9` command line: dump, unpack, debug pictures. |
 | `tests/U9.Formats.Tests` | Round-trip tests over every shipped file. |
 | `tests/U9Editor.Core.Tests` | Picking and map-space tests. |
-| `analysis/` | Ghidra notes on `u9.exe`. |
+| `analysis/` | Survey notes on `u9.exe`. |
+| `tools/` | Helper scripts (in-game testing). |
 | `gamedata/` | Your copy of the GOG install (not committed). Or set `U9_GAMEDATA`. |
 
 
-## Build and test
+## Build, test and use
 
 ```
 dotnet build U9Editor.sln
@@ -75,7 +122,9 @@ UltimaCartographer (`u9viewer/EXPORT.md` is the contract); it prints a size repo
 37 MB are 128-pixel model textures; every map: 180 MB, 14 s).
 Agents drive the running editor with `.claude/skills/run-u9editor/driver.ps1` (see its `SKILL.md`).
 
-## Format status
+## Technical notes
+
+### Format status
 
 | Format | Read | Write | Byte-identical round trip |
 |---|---|---|---|
@@ -87,7 +136,7 @@ Agents drive the running editor with `.claude/skills/run-u9editor/driver.ps1` (s
 | Models (`sappear.flx`) | yes (all 3,748 models, every LOD) | not yet | — |
 | Trigger scripts (`TRIGGERS.FLX`): map changes | yes | map-change scripts (retarget, new links) | unchanged slots kept |
 
-Findings from the shipped files, beyond the public notes:
+### Findings from the shipped files
 
 - FLX: some archives have records out of order, with stale bytes between them (the original tools appended
   grown records and left the old space). The preserve layout keeps both, so edits change as few bytes as possible.
@@ -99,7 +148,7 @@ Findings from the shipped files, beyond the public notes:
 - Terrain: points inside a chunk are stored row by row (x + y * 16), and tiles row by row. The Britannia
   heightmap from `u9 terrain-heightmap` shows no seams.
 
-Map space (used by the editor):
+### Map space (used by the editor)
 
 - North is the last point row; row 0 is south and x runs east. Checked against the game's own map of Britannia
   (`bitmap16.flx` record 534): Castle British (Lord British's throne in `nonfixed.9` at point 502, 554) is in the
@@ -133,10 +182,14 @@ Map space (used by the editor):
   sets come out clear (set 10 is grass 8 into dirt 11 by 11,896 and 14,602 votes against a few hundred; set 23 is
   ambiguous), and the map's 30,000-odd transition quads come back from their corner materials, frame group and
   turn included, in over 99% of cases. That is what the editor's blended painting uses.
-- Terrain chunks: Britannia shares none (5,588 chunks for 4,096 tiles, the rest stale); Moonglow shares widely
+- Terrain chunks: Britannia shares none (5,588 chunks for 4,096 tiles, the rest stale); map 4 shares widely
   (504 chunks for 1,024 tiles). An edit gives a tile its own copy first; saving shares copies that match again.
-- Objects and the ground: many fixed objects are sunk into the terrain on purpose. On Moonglow only 315 of 1,218
+- Objects and the ground: many fixed objects are sunk into the terrain on purpose. On map 4 only 315 of 1,218
   are within 16 object units of the ground and 698 within 64; plants and the pools' stones sit 45-61 below.
 - In the game (patched U9GL, `tools/game-test.ps1`): a link retargeted and saved by the editor takes the Avatar
   to the new arrival (59779,64640 for 59776,64640), and a hill raised and saved puts him on its top at the height
   the editor reckons (z 3626 for 3628).
+
+## License
+
+MIT (see [LICENSE](LICENSE)). This covers the editor's code only, not the game or its data.
