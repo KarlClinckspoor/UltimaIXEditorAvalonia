@@ -116,6 +116,24 @@ namespace U9Editor.Core.Tests
         }
 
         [Fact]
+        public void UndoDuringAStrokeTakesBackTheStroke()
+        {
+            var ed = Britannia(out var keep);
+            using (keep)
+            {
+                int h = ed.Raster.HeightAt(320, 320);
+                ed.BeginStroke(new TerrainBrush { Tool = TerrainTool.Raise, Radius = 2, Strength = 30, ObjectsFollow = false });
+                ed.Dab(320, 320);
+                Assert.Equal("raise", ed.Undo());
+                Assert.False(ed.InStroke);
+                Assert.Equal(h, ed.Raster.HeightAt(320, 320));
+                ed.Dab(320, 320);                   // the view may still send dabs: nothing happens
+                Assert.Equal(h, ed.Raster.HeightAt(320, 320));
+                Assert.False(ed.HasChanges);
+            }
+        }
+
+        [Fact]
         public void SavingWritesTheTerrainAndKeepsTheOriginal()
         {
             var ed = Britannia(out var keep);

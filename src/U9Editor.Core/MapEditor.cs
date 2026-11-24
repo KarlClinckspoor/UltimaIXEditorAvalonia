@@ -183,6 +183,7 @@ namespace U9Editor.Core
         /// <summary>Takes back the last edit; returns its description, or null if there was none.</summary>
         public string Undo()
         {
+            if (InStroke) EndStroke();      // a stroke under way is the last edit
             if (undo.Count == 0) return null;
             var s = undo[^1];
             undo.RemoveAt(undo.Count - 1);
@@ -202,6 +203,7 @@ namespace U9Editor.Core
 
         public string Redo()
         {
+            if (InStroke) EndStroke();
             if (redo.Count == 0) return null;
             var s = redo[^1];
             redo.RemoveAt(redo.Count - 1);
