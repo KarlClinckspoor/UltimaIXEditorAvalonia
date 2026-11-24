@@ -84,4 +84,9 @@ Map space (used by the editor):
   records in it and (nonfixed) +0x18 its property segments. The u32 before the data is a free page list: the
   first unused page | 1, whose +0x00 names the next. Fixed pages are packed; nonfixed pages keep holes.
   Moving an object to another chunk moves its record (and property segment) into that chunk's pages.
+- Terrain point bits 13-14 turn the quad's texture in quarter turns (not "swap" and "mirror"); turn 0 puts the
+  texture's top row to the north. Found from the 9-frame transition textures (frames 0-2 outer corner, 3-5 inner
+  corner, 6-8 edge): neighbouring transition quads agree on their shared corners in 98.2% of Britannia's 80,498
+  pairs under this reading, 40% under swap/mirror. Bit 15 does not orient the texture. All three bits are spread
+  evenly over plain ground too, which is turned at random to hide the tiling. `u9 bitmap-frames` shows a set.
 - Bitmap pixel format is the low nibble of frame byte 1: 3 = 8-bit intensity, 4 = RGB565, 5 = ARGB1555.

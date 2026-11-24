@@ -99,18 +99,19 @@ void main()
         if (layer == 0u) base = vec3(1.0, 0.0, 1.0) * 0.6;
         else
         {
-            vec2 uv = fract(vPoint);
+            // bits 13-14 turn the texture in quarter turns; 0 puts its top row to the north (see TerrainPoint.Rotation)
+            vec2 f = fract(vPoint);
+            uint rot = (raw >> 13) & 3u;
+            vec2 uv = rot == 0u ? vec2(f.x, 1.0 - f.y) : rot == 1u ? vec2(1.0 - f.y, 1.0 - f.x) : rot == 2u ? vec2(1.0 - f.x, f.y) : f.yx;
             if (uUvFlipV == 1) uv.y = 1.0 - uv.y;
             for (int i = 0; i < uUvRotate; i++) uv = vec2(uv.y, 1.0 - uv.x);
-            if ((raw & 0x2000u) != 0u) uv = uv.yx;              // swap
-            if ((raw & 0x4000u) != 0u) uv = vec2(1.0) - uv;      // mirror
             // gradients from the continuous point position, so the quad edges do not pick the smallest mipmap
             base = textureGrad(uTerrainTex, vec3(uv, float(layer - 1u)), dFdx(vPoint), dFdy(vPoint)).rgb;
         }
     }
     else if (uColourMode == 1) base = hashColour(raw >> 22);
     else if (uColourMode == 2)
-        base = vec3((raw & 0x2000u) != 0u ? 0.9 : 0.25, (raw & 0x4000u) != 0u ? 0.9 : 0.25, (raw & 0x8000u) != 0u ? 0.9 : 0.25);
+        base = vec3((raw & 0x2000u) != 0u ? 0.9 : 0.25, (raw & 0x4000u) != 0u ? 0.9 : 0.25, (raw & 0x8000u) != 0u ? 0.9 : 0.25);   // rotation bits, bit 15
     else if (uColourMode == 0 || uColourMode == 3) base = heightColour(vWorld.y);
 
     vec3 sun = normalize(vec3(-0.45, 0.8, 0.35));

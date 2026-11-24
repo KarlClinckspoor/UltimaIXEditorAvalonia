@@ -21,6 +21,7 @@ namespace U9Editor.Cli
                     case "terrain-info" when args.Length == 2: return TerrainInfo(args[1]);
                     case "terrain-heightmap" when args.Length == 3: return TerrainHeightmap(args[1], args[2]);
                     case "terrain-textures" when args.Length == 3: return TerrainTextures(args[1], args[2]);
+                    case "bitmap-frames" when args.Length == 4: return BitmapFrames(args[1], int.Parse(args[2]), args[3]);
                     default: return Usage();
                 }
             }
@@ -38,7 +39,8 @@ namespace U9Editor.Cli
   u9 flx-unpack <file.flx> <out-dir>         write each record to <out-dir>/NNNNN.bin
   u9 terrain-info <terrain.N>                header, tile and chunk summary
   u9 terrain-heightmap <terrain.N> <out.png> grayscale height picture (point row 0 at the top, 1 pixel per point)
-  u9 terrain-textures <terrain.N> <out.png>  false-colour picture of the texture numbers");
+  u9 terrain-textures <terrain.N> <out.png>  false-colour picture of the texture numbers
+  u9 bitmap-frames <bitmap16.flx> <record> <out.png>  every frame of a bitmap record, side by side (row 0 at the top)");
             return 2;
         }
 
@@ -109,6 +111,29 @@ namespace U9Editor.Cli
                     px[x + y * t.Width] = (byte)((t.GetPoint(x, y).Height - min) * 255 / range);
             PngWriter.WriteGray(outPng, t.Width, t.Height, px);
             Console.WriteLine($"wrote {outPng} ({t.Width}x{t.Height}, heights {min}..{max})");
+            return 0;
+        }
+
+        static int BitmapFrames(string flx, int record, string outPng)
+        {
+            using var a = U9.Formats.Flx.FlxArchive.Open(flx);
+            var rec = a.Read(record);
+            int n = U9.Formats.Bitmaps.Bitmap16.FrameCount(rec);
+            var frames = new List<U9.Formats.Bitmaps.BitmapFrame>();
+            for (int i = 0; i < n; i++) frames.Add(U9.Formats.Bitmaps.Bitmap16.ReadFrame(rec, i));
+            int gap = 4, w = 0, h = 0;
+            foreach (var f in frames) { w += f.Width + gap; h = Math.Max(h, f.Height); }
+            var px = new byte[w * h * 3];
+            int x0 = 0;
+            foreach (var f in frames)
+            {
+                for (int y = 0; y < f.Height; y++)
+                    for (int x = 0; x < f.Width; x++)
+                        for (int c = 0; c < 3; c++) px[(x0 + x + y * w) * 3 + c] = f.Rgba[(x + y * f.Width) * 4 + c];
+                x0 += f.Width + gap;
+            }
+            PngWriter.WriteRgb(outPng, w, h, px);
+            Console.WriteLine($"wrote {outPng}: {n} frames");
             return 0;
         }
 

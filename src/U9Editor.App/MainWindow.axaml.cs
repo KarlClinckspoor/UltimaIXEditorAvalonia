@@ -430,7 +430,7 @@ namespace U9Editor.App
             var p = View.Raster[h.X, h.Row];
             int tile = h.X / 16 + h.Row / 16 * terrain.TilesX;
             return $"{prefix}point ({h.X}, {h.Row})  height {p.Height}  texture {p.Texture}  frame {p.Frame}" +
-                   $"{(p.Hole ? "  hole" : "")}{(p.Swap ? "  swap" : "")}{(p.Mirror ? "  mirror" : "")}{(p.Bit15 ? "  bit15" : "")}" +
+                   $"{(p.Hole ? "  hole" : "")}  turn {p.Rotation}{(p.Bit15 ? "  bit15" : "")}" +
                    $"   tile {h.X / 16},{h.Row / 16}  chunk {terrain.TileChunks[tile]}   raw 0x{p.Raw:X8}";
         }
 
