@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../U9.Formats/U9.Formats.csproj" />
+    <ProjectReference Include="../U9Editor.Core/U9Editor.Core.csproj" />
   </ItemGroup>
 </Project>

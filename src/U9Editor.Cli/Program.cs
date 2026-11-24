@@ -1,3 +1,4 @@
+using U9Editor.Core;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -22,6 +23,7 @@ namespace U9Editor.Cli
                     case "terrain-heightmap" when args.Length == 3: return TerrainHeightmap(args[1], args[2]);
                     case "terrain-textures" when args.Length == 3: return TerrainTextures(args[1], args[2]);
                     case "bitmap-frames" when args.Length == 4: return BitmapFrames(args[1], int.Parse(args[2]), args[3]);
+                    case "export-web" when args.Length >= 3: return ExportWeb(args);
                     default: return Usage();
                 }
             }
@@ -40,7 +42,9 @@ namespace U9Editor.Cli
   u9 terrain-info <terrain.N>                header, tile and chunk summary
   u9 terrain-heightmap <terrain.N> <out.png> grayscale height picture (point row 0 at the top, 1 pixel per point)
   u9 terrain-textures <terrain.N> <out.png>  false-colour picture of the texture numbers
-  u9 bitmap-frames <bitmap16.flx> <record> <out.png>  every frame of a bitmap record, side by side (row 0 at the top)");
+  u9 bitmap-frames <bitmap16.flx> <record> <out.png>  every frame of a bitmap record, side by side (row 0 at the top)
+  u9 export-web <gamedata> <out> [--maps 9,10,...] [--texture-max 128] [--no-models]
+                                             bake maps for the U9 web viewer (UltimaCartographer/u9viewer/EXPORT.md)");
             return 2;
         }
 
@@ -112,6 +116,29 @@ namespace U9Editor.Cli
             PngWriter.WriteGray(outPng, t.Width, t.Height, px);
             Console.WriteLine($"wrote {outPng} ({t.Width}x{t.Height}, heights {min}..{max})");
             return 0;
+        }
+
+        static int ExportWeb(string[] args)
+        {
+            var game = GameFolder.TryOpen(args[1]);
+            if (game == null) { Console.Error.WriteLine($"{args[1]} is not an Ultima IX folder (no static/terrain.*)"); return 1; }
+            var o = new WebExportOptions();
+            for (int i = 3; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "--maps" when i + 1 < args.Length: o.Maps = args[++i].Split(',').Select(int.Parse).ToArray(); break;
+                    case "--texture-max" when i + 1 < args.Length: o.TextureMax = int.Parse(args[++i]); break;
+                    case "--no-models": o.Models = false; break;
+                    default: return Usage();
+                }
+            }
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var report = WebExport.Run(game, args[2], o, Console.WriteLine);
+            Console.WriteLine();
+            Console.Write(report);
+            Console.WriteLine($"{sw.Elapsed.TotalSeconds:F1} s");
+            return report.Problems.Count == 0 ? 0 : 3;
         }
 
         static int BitmapFrames(string flx, int record, string outPng)

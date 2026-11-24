@@ -10,6 +10,10 @@ namespace U9.Formats.Bitmaps
         public int Width { get; init; }
         public int Height { get; init; }
         public byte[] Rgba { get; init; }
+        /// <summary>Pixel format: 3 = 8-bit intensity (blended), 4 = RGB565, 5 = ARGB1555.</summary>
+        public int Format { get; init; }
+        /// <summary>Some pixels are transparent (alpha 0: the ARGB1555 alpha bit or the magenta colour key).</summary>
+        public bool HasTransparency { get; init; }
     }
 
     /// <summary>
@@ -93,7 +97,9 @@ namespace U9.Formats.Bitmaps
                     }
                 }
             }
-            return new BitmapFrame { Width = w, Height = h, Rgba = rgba };
+            bool clear = false;
+            if (format != 3) for (int i = 3; i < rgba.Length && !clear; i += 4) clear = rgba[i] == 0;
+            return new BitmapFrame { Width = w, Height = h, Rgba = rgba, Format = format, HasTransparency = clear };
         }
 
         static byte Expand(int c5) => (byte)((c5 << 3) | (c5 >> 2));

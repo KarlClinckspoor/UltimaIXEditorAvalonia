@@ -13,6 +13,8 @@ namespace U9Editor.Core
         public double PointRow { get; init; }
         public double TerrainHeight { get; init; }
         public int Type { get; init; }
+        /// <summary>The arrival object in the destination map's nonfixed file.</summary>
+        public MapObject Object { get; init; }
     }
 
     /// <summary>One map change: a trigger zone object and where its trigger sends the player.</summary>
@@ -89,7 +91,7 @@ namespace U9Editor.Core
                         if (target != null)
                             foreach (var t in target.Objects)
                                 if (t.Link == link && (op.A == 0 || t.Type == op.A))
-                                    arrivals.Add(new LinkArrival { PointX = t.PointX, PointRow = t.PointRow, TerrainHeight = t.TerrainHeight, Type = t.Type });
+                                    arrivals.Add(new LinkArrival { PointX = t.PointX, PointRow = t.PointRow, TerrainHeight = t.TerrainHeight, Type = t.Type, Object = t });
                         list.Add(new MapLink
                         {
                             SourceMap = map, Zone = zone, TriggerSlot = slot, Ops = string.Join(" ", ops.Select(o => o.ToString())),

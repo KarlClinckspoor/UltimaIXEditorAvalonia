@@ -39,6 +39,9 @@ deletes, Ctrl+Z / Ctrl+Y undo and redo, Ctrl+S saves. Saving writes `static/fixe
 every changed map; the first save keeps each original beside it as `.orig`. Saved games most likely carry their
 own copy of the nonfixed objects (not checked yet), so try nonfixed changes in a new game.
 Start options for scripted pictures: `--look X,ROW --distance D --pitch P --yaw Y`.
+`u9 export-web <gamedata> <out> [--maps 9,10] [--texture-max 128] [--no-models]` bakes maps for the WebGL viewer in
+UltimaCartographer (`u9viewer/EXPORT.md` is the contract); it prints a size report (Britannia alone: 73 MB, of which
+37 MB are 128-pixel model textures; every map: 180 MB, 14 s).
 Agents drive the running editor with `.claude/skills/run-u9editor/driver.ps1` (see its `SKILL.md`).
 
 ## Format status

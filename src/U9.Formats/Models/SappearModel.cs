@@ -54,6 +54,21 @@ namespace U9.Formats.Models
             return nm > 0 && nm < 256 && nl > 0 && nl < 16 && 0x90 + 4L * nm * (nl + 1) <= r.Length;
         }
 
+        /// <summary>Number of LODs (header +0x04).</summary>
+        public static int LodCount(byte[] r) => IsModel(r) ? (int)BinaryPrimitives.ReadUInt32LittleEndian(r.AsSpan(4)) : 0;
+
+        /// <summary>
+        /// The four LOD thresholds (+0x48), squared distances in object units (250000 = 500 units, 3.9 points);
+        /// 0xFFFFFFFF, and the odd garbage value above 2^31, mean "no limit".
+        /// </summary>
+        public static uint[] LodThresholds(byte[] r)
+        {
+            var t = new uint[4];
+            if (!IsModel(r)) return t;
+            for (int i = 0; i < 4; i++) t[i] = BinaryPrimitives.ReadUInt32LittleEndian(r.AsSpan(0x48 + 4 * i));
+            return t;
+        }
+
         sealed class Limb
         {
             public int Id, Parent;

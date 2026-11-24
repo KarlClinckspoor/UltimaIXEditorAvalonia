@@ -4,11 +4,15 @@ using System.IO;
 using System.IO.Compression;
 using System.Text;
 
-namespace U9Editor.Cli
+namespace U9Editor.Core
 {
-    /// <summary>Minimal PNG encoder: 8-bit grayscale or RGB, no filtering. Enough for debug pictures.</summary>
-    static class PngWriter
+    /// <summary>
+    /// Minimal PNG encoder: 8-bit grayscale, RGB or RGBA, no filtering. The output depends only on the pixels (no
+    /// time stamps), so the same picture always gives the same bytes.
+    /// </summary>
+    public static class PngWriter
     {
+        public static void WriteRgba(string path, int width, int height, byte[] pixels) => Write(path, width, height, pixels, 6, 4);
         public static void WriteGray(string path, int width, int height, byte[] pixels) => Write(path, width, height, pixels, 0, 1);
         public static void WriteRgb(string path, int width, int height, byte[] pixels) => Write(path, width, height, pixels, 2, 3);
 
