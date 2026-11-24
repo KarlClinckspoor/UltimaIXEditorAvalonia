@@ -37,6 +37,10 @@ Usable for object, link, terrain, contents and model editing on any map. Work is
 6. **New models through Blender** (done): import and export `sappear.flx` models via glTF.
 7. **Cutscene viewer and editor**: play the game's in-engine cutscenes in the 3D view (starting with the first one,
    the camera entering the Avatar's house) and edit their camera moves, timing and actors.
+8. **Object viewer, browser and properties**: any object in its own 3D view; the objects around the selection or
+   camera; an add-object tool that filters the types; finding objects by property, model or contents; and editing
+   properties, both type-wide in `TYPES.DAT` (a sword's damage and damage type, health) and per object, every field
+   with a tooltip.
 
 ## Getting started
 
