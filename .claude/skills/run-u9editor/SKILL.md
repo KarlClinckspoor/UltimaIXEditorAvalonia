@@ -46,14 +46,15 @@ Terrain brush: `key "b"` turns it on (Terrain tab, Raise), then `drag 420 650 60
 road in the view above (the title gains ` *`, the status bar says `Terrain: raise`), `key "^z"` takes it back. The
 tool list is the combo box at 1135,351; with it open, Paint texture is at 1135,493; the Texture field is at
 1245,495 (`click 1245 495` then `key "^a11{TAB}"`). On Britannia `--look 440,540 --distance 40 --top-down` shows
-open grass at the upper left to paint into (`drag 120 380 250 420`); the panel names what the texture blends into. A drag of that length at
+open grass at the upper left to paint into (`drag 120 380 250 420`); the panel names what the texture blends into. `key "{]}"` widens the brush by a quarter, `click 500 700 ctrl` takes
+the ground's texture (Paint) or height (Flatten) under that pixel. A drag of that length at
 strength 20 builds a hill some 45 units high: the default (6) is gentler.
 
 | Command | Does |
 |---|---|
 | `launch [editor args]` | starts `src\U9Editor.App\bin\Debug\net10.0\U9Editor.exe`, parks the window at 0,0, waits 10 s for the map and models |
 | `shot <png> [x y w h]` | captures the window, or a rectangle of it |
-| `click x y`, `drag x1 y1 x2 y2`, `move x y` | mouse, in window pixels as a full `shot` shows them (title bar included) |
+| `click x y [ctrl\|shift]`, `drag x1 y1 x2 y2`, `move x y` | mouse, in window pixels as a full `shot` shows them (title bar included) |
 | `key <SendKeys>` | `^z` undo, `^y` redo, `^d` copy, `^s` save, `{DEL}`, `{END}` to ground, `{[}` / `{]}` turn, `{PGUP}` / `{PGDN}`, `{ESC}` |
 | `stop` | kills the editor (no unsaved-changes prompt) |
 

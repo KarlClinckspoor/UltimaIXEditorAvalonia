@@ -59,7 +59,8 @@ set blends is learnt from the map itself: plain quads beside transition quads vo
 Britannia set 10 is grass 8 into dirt 11, 11,896 and 14,602 votes against a few hundred); 13 of Britannia's 14
 sets are clear, and the panel says which textures the chosen one blends into. The map's own transition quads come
 back from their corner materials in over 99% of cases. Against ground with no transition the edge stays hard.
-Texture from selected point takes the texture and frame of a ground point clicked with the brush off. Saving
+With the brush on, `[` / `]` change its radius and Ctrl+click takes the height (Flatten) or the texture (Paint;
+with blending, the material on the clicked side of a transition quad) from the ground. Saving
 writes `static/terrain.N` (first time keeping `.orig`). Checked in the game: a hill raised at Britannia's bridge
 (height 607 to 907) put the Avatar on its top at z 3626 (the editor reckons 3628).
 

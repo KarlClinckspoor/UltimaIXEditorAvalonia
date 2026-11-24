@@ -173,7 +173,7 @@
               </WrapPanel>
               <TextBlock x:Name="BlendInfo" FontSize="11" TextWrapping="Wrap" />
               <TextBlock Opacity="0.6" FontSize="11" TextWrapping="Wrap"
-                         Text="Strength: point heights (a quarter unit each) per dab for Raise and Lower, percent of the way per dab for Smooth and Flatten. Holding the mouse still keeps raising. Ctrl+Z takes back a whole stroke; Ctrl+S writes static/terrain.N (the first time keeping terrain.N.orig)." />
+                         Text="Strength: point heights (a quarter unit each) per dab for Raise and Lower, percent of the way per dab for Smooth and Flatten. Holding the mouse still keeps raising. [ and ] change the radius; Ctrl+click takes the height (Flatten) or texture (Paint) from the ground. Ctrl+Z takes back a whole stroke; Ctrl+S writes static/terrain.N (the first time keeping terrain.N.orig)." />
             </StackPanel>
           </TabItem>
         </TabControl>

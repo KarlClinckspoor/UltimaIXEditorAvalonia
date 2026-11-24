@@ -77,6 +77,7 @@ namespace U9Editor.App
             View.PlaceAt += OnPlaceAt;
             View.StrokeEnded += OnStrokeEnded;
             View.StrokeRefused += m => StatusText.Text = m;
+            View.BrushSample += OnBrushSample;
             View.CameraChanged += () => Compass.RenderTransform = new Avalonia.Media.RotateTransform(-View.Camera.Yaw);
             View.FrameDrawn += OnFrameDrawn;
             AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
@@ -674,6 +675,8 @@ namespace U9Editor.App
                     return true;
                 case Key.Delete: OnDelete(null, null); return true;
                 case Key.End: OnDropToGround(null, null); return true;
+                case Key.OemOpenBrackets when View.Brush != null: BrushRadius.Value = Math.Max(BrushRadius.Minimum, BrushRadius.Value / 1.25); return true;
+                case Key.OemCloseBrackets when View.Brush != null: BrushRadius.Value = Math.Min(BrushRadius.Maximum, BrushRadius.Value * 1.25); return true;
                 case Key.OemOpenBrackets: OnTurnLeft(null, null); return true;
                 case Key.OemCloseBrackets: OnTurnRight(null, null); return true;
                 case Key.PageUp: OnRaise(null, null); return true;
@@ -733,6 +736,30 @@ namespace U9Editor.App
         }
 
         void OnBrushFieldKey(object sender, KeyEventArgs e) => OnBrushChanged(null, null);
+
+        void OnBrushSample(TerrainHit h)
+        {
+            var p = editor.Raster[h.X, h.Row];
+            int round = (int)MathF.Round(editor.Raster.HeightAt(h.World.X, View.Space.Row(h.World.Z)));
+            switch (BrushTool.SelectedIndex)
+            {
+                case 3: BrushFlatten.Text = round.ToString(); StatusText.Text = $"Flattening to height {round}."; break;
+                case 4:
+                    // with blending, take the ground's material (a transition quad gives the side under the click)
+                    int tex = p.Texture, frame = p.Frame;
+                    if (BrushBlend.IsChecked == true && editor.Transitions.IsTransition(tex))
+                    {
+                        float fu = h.World.X - h.X, fv = View.Space.Row(h.World.Z) - h.Row;
+                        tex = editor.Transitions.CornerMaterial(p, fu < 0.5f ? 0 : 1, fv < 0.5f ? 0 : 1);
+                        frame = 0;
+                    }
+                    BrushTexture.Text = tex.ToString(); BrushFrame.Text = frame.ToString();
+                    OnBrushChanged(null, null);
+                    StatusText.Text = $"Painting texture {tex}, frame {frame}.";
+                    break;
+                default: StatusText.Text = $"Ground at ({h.X}, {h.Row}): height {round}, texture {p.Texture} frame {p.Frame}."; break;
+            }
+        }
 
         void ShowBlendInfo()
         {

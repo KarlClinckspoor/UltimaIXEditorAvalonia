@@ -185,6 +185,8 @@ namespace U9Editor.App
         }
         /// <summary>A stroke ended (it is on the editor's undo stack).</summary>
         public event Action StrokeEnded;
+        /// <summary>Ctrl+click with the brush on: the ground point to take a height or texture from.</summary>
+        public event Action<TerrainHit> BrushSample;
         /// <summary>A stroke could not start; the message says why.</summary>
         public event Action<string> StrokeRefused;
         bool stroking;
@@ -435,6 +437,14 @@ namespace U9Editor.App
             leftDown = pt.Properties.IsLeftButtonPressed;
             panning = pt.Properties.IsMiddleButtonPressed || (leftDown && (e.KeyModifiers & KeyModifiers.Shift) != 0);
             dragObject = null;
+            if (leftDown && !panning && brush != null && (e.KeyModifiers & KeyModifiers.Control) != 0)
+            {
+                var h = PickAt(pressAt);
+                if (h.Hit) BrushSample?.Invoke(h);
+                anyDown = leftDown = false;
+                e.Handled = true;
+                return;
+            }
             if (leftDown && !panning && brush != null) StartStroke(pressAt);
             else if (leftDown && !panning) StartObjectDrag(pressAt);
             e.Pointer.Capture(this);

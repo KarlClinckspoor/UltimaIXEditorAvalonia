@@ -5,7 +5,7 @@
 #                              waits until the window is up and the map is drawn
 #   shot <png> [x y w h]       capture the window (or a window-relative rectangle of it)
 #   move <x> <y>               hover (the status bar then names the point and any object under it)
-#   click <x> <y>              left click, window-relative pixels (as in a full `shot`)
+#   click <x> <y> [ctrl|shift] left click, window-relative pixels (as in a full `shot`), optionally with Ctrl or Shift held
 #   drag <x1> <y1> <x2> <y2>   left drag in 20 steps
 #   key <keys>                 SendKeys string: {PGUP} ^z ^s {ESC} {END} {DEL} [ ] ...
 #   stop                       close the editor (kills it: no unsaved-changes prompt)
@@ -22,6 +22,7 @@ public static class U9Win {
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int hh, uint flags);
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, int x, int y, uint d, IntPtr e);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, IntPtr extra);
   public struct RECT { public int L, T, R, B; }
 }
 "@
@@ -88,7 +89,10 @@ switch ($cmd) {
     'click' {
         $r = Select-EditorWindow
         Move-To $r $rest[0] $rest[1]
+        $mod = switch ($rest[2]) { 'ctrl' { 0x11 } 'shift' { 0x10 } default { 0 } }
+        if ($mod) { [U9Win]::keybd_event([byte]$mod, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 50 }
         [U9Win]::mouse_event(2, 0, 0, 0, 0); Start-Sleep -Milliseconds 50; [U9Win]::mouse_event(4, 0, 0, 0, 0)
+        if ($mod) { Start-Sleep -Milliseconds 50; [U9Win]::keybd_event([byte]$mod, 0, 2, [IntPtr]::Zero) }
     }
     'drag' {
         $r = Select-EditorWindow
