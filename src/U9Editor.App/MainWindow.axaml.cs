@@ -693,7 +693,19 @@ namespace U9Editor.App
 
         // ---- terrain
 
-        void OnTerrainEdited(int x, int row, int w, int h) => View.InvalidatePoints(x, row, w, h);
+        // objects drawn on the moving ground during a stroke, put back to their records when it ends
+        readonly HashSet<SceneObject> followPreviewed = new HashSet<SceneObject>();
+
+        void OnTerrainEdited(int x, int row, int w, int h)
+        {
+            View.InvalidatePoints(x, row, w, h);
+            if (editor == null || !editor.InStroke) return;
+            foreach (var (o, z) in editor.FollowPreview())
+            {
+                View.Preview(o, o.Source.MapX, o.Source.MapY, z, o.Source.Rotation);
+                followPreviewed.Add(o);
+            }
+        }
 
         void OnWaterEdited(int stored)
         {
@@ -869,6 +881,7 @@ namespace U9Editor.App
         void OnStrokeEnded()
         {
             if (editor == null) return;
+            if (followPreviewed.Count > 0) { View.RefreshEdited(followPreviewed.ToList(), false); followPreviewed.Clear(); }
             editors[editor.MapNumber] = editor;
             // a texture the map did not use yet needs its frame in the texture array
             var b = View.Brush;

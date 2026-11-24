@@ -30,10 +30,17 @@ namespace U9Editor.Core
         public bool Blend;
         /// <summary>Hole: true cuts holes, false fills them.</summary>
         public bool CutHole = true;
-        /// <summary>Objects standing on the ground (within <see cref="FollowTolerance"/>) go up and down with it.</summary>
+        /// <summary>
+        /// Objects on the ground go up and down with it: those up to <see cref="FollowTolerance"/> above it or
+        /// <see cref="FollowDepth"/> sunk into it. Many are sunk on purpose (on Moonglow plants and the pools' stones
+        /// sit 45 to 61 below; only 315 of its 1,218 fixed objects are within 16), while things much higher stand on
+        /// tables and floors.
+        /// </summary>
         public bool ObjectsFollow = true;
-        /// <summary>Object units (4 per point height) an object may be off the ground and still follow it.</summary>
+        /// <summary>Object units (4 per point height) an object may stand above the ground and still follow it.</summary>
         public int FollowTolerance = 16;
+        /// <summary>Object units an object may be sunk into the ground and still follow it.</summary>
+        public int FollowDepth = 64;
     }
 
     /// <summary>Points a terrain stroke changed: raw values before and after, by index x + row * width.</summary>
@@ -252,14 +259,49 @@ namespace U9Editor.Core
             foreach (var k in s.Points.Where(kv => kv.Value.Before == kv.Value.After).Select(kv => kv.Key).ToList()) s.Points.Remove(k);
             if (s.IsEmpty) return;
             var step = new Step { Description = b.Tool switch { TerrainTool.Paint => "paint", TerrainTool.Hole => b.CutHole ? "cut holes" : "fill holes", _ => b.Tool.ToString().ToLowerInvariant() }, Terrain = s };
-            if (b.ObjectsFollow && b.Tool != TerrainTool.Paint) step.Follow = FollowGround(s, b.FollowTolerance);
+            if (b.ObjectsFollow && b.Tool != TerrainTool.Paint) step.Follow = FollowGround(s, b);
             undo.Add(step);
             redo.Clear();
             terrainVersion++;
         }
 
         /// <summary>Moves objects that stood on the ground before the stroke onto the ground after it.</summary>
-        List<(ObjectMap, ObjectEdit)> FollowGround(TerrainChange s, int tolerance)
+        List<(ObjectMap, ObjectEdit)> FollowGround(TerrainChange s, TerrainBrush b)
+        {
+            var result = new List<(ObjectMap, ObjectEdit)>();
+            foreach (var map in new[] { Fixed, Nonfixed })
+            {
+                if (map == null) continue;
+                var moves = FollowMoves(s, b, map);
+                if (moves.Count == 0) continue;
+                map.BeginEdit("follow the ground");
+                foreach (var (o, z) in moves) o.MoveTo(o.MapX, o.MapY, z);
+                var e = map.EndEdit();
+                if (e == null) continue;
+                result.Add((map, e));
+                Bump(map, +1);
+                Publish(e);
+            }
+            return result.Count > 0 ? result : null;
+        }
+
+        /// <summary>
+        /// While a stroke is under way: the objects that will follow the ground when it ends, and the height each
+        /// would have now, for drawing them there meanwhile (the files change when the stroke ends).
+        /// </summary>
+        public List<(SceneObject Object, int Z)> FollowPreview()
+        {
+            var list = new List<(SceneObject, int)>();
+            if (stroke == null || stroke.IsEmpty || !strokeBrush.ObjectsFollow || strokeBrush.Tool == TerrainTool.Paint) return list;
+            foreach (var map in new[] { Fixed, Nonfixed })
+                if (map != null)
+                    foreach (var (o, z) in FollowMoves(stroke, strokeBrush, map))
+                        if (Objects.Of(o) is SceneObject so) list.Add((so, z));
+            return list;
+        }
+
+        /// <summary>Objects of a file standing on the ground before the stroke, and their height on the ground after it.</summary>
+        List<(MapObject O, int Z)> FollowMoves(TerrainChange s, TerrainBrush b, ObjectMap map)
         {
             int w = Raster.Width;
             uint Before(int x, int y)
@@ -275,31 +317,18 @@ namespace U9Editor.Core
                 float a = Before(ix, iy) & 0xFFF, bb = Before(ix + 1, iy) & 0xFFF, c = Before(ix, iy + 1) & 0xFFF, d = Before(ix + 1, iy + 1) & 0xFFF;
                 return (a * (1 - fx) + bb * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
             }
-            var result = new List<(ObjectMap, ObjectEdit)>();
-            foreach (var map in new[] { Fixed, Nonfixed })
+            var moves = new List<(MapObject O, int Z)>();
+            foreach (var o in map.Objects)
             {
-                if (map == null) continue;
-                var moves = new List<(MapObject O, int Z)>();
-                foreach (var o in map.Objects)
-                {
-                    if (o.Removed) continue;
-                    float px = o.MapX / MapSpace.ObjectUnitsPerPoint, py = o.MapY / MapSpace.ObjectUnitsPerPoint;
-                    if (px < s.X0 - 1 || px > s.X1 + 1 || py < s.Y0 - 1 || py > s.Y1 + 1) continue;
-                    int oldZ = (int)MathF.Round(OldHeight(px, py) * 4f);
-                    if (Math.Abs(o.Z - oldZ) > tolerance) continue;
-                    int newZ = Math.Clamp(o.Z + GroundZ(o.MapX, o.MapY) - oldZ, 0, 0xFFFF);
-                    if (newZ != o.Z) moves.Add((o, newZ));
-                }
-                if (moves.Count == 0) continue;
-                map.BeginEdit("follow the ground");
-                foreach (var (o, z) in moves) o.MoveTo(o.MapX, o.MapY, z);
-                var e = map.EndEdit();
-                if (e == null) continue;
-                result.Add((map, e));
-                Bump(map, +1);
-                Publish(e);
+                if (o.Removed) continue;
+                float px = o.MapX / MapSpace.ObjectUnitsPerPoint, py = o.MapY / MapSpace.ObjectUnitsPerPoint;
+                if (px < s.X0 - 1 || px > s.X1 + 1 || py < s.Y0 - 1 || py > s.Y1 + 1) continue;
+                int oldZ = (int)MathF.Round(OldHeight(px, py) * 4f);
+                if (o.Z - oldZ > b.FollowTolerance || oldZ - o.Z > b.FollowDepth) continue;
+                int newZ = Math.Clamp(o.Z + GroundZ(o.MapX, o.MapY) - oldZ, 0, 0xFFFF);
+                if (newZ != o.Z) moves.Add((o, newZ));
             }
-            return result.Count > 0 ? result : null;
+            return moves;
         }
 
         void ApplyTerrain(TerrainChange s, bool after)

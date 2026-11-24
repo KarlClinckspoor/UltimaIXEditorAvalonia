@@ -51,8 +51,9 @@ own copy of the nonfixed objects (not checked yet), so try nonfixed changes in a
 
 Editing terrain (Terrain tab, or B): with the brush on, a left drag on the ground raises, lowers, smooths,
 flattens (to a typed height, or the height under the first dab), paints a texture and frame, or cuts and fills
-holes; right drag still orbits. Holding the mouse still keeps the height tools working. Objects standing on the
-ground (within 16 object units) go up and down with it; things on tables and floors stay where they are. Each
+holes; right drag still orbits. Holding the mouse still keeps the height tools working. Objects on the ground go
+up and down with it: up to 16 object units above it or 64 sunk into it (many are sunk on purpose: on Moonglow
+plants and the pools' stones sit 45 to 61 below); things on tables and floors stay where they are. Each
 stroke is one undo step, objects included. Painting a texture the map did not use adds it to the view's textures.
 With Blend edges on, painting lays the texture as ground on the points' corners and gives the quads along the
 edge the map's transition frames into what was there, as the shipped maps do. Which plain textures a transition

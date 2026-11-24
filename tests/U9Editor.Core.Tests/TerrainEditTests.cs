@@ -68,7 +68,12 @@ namespace U9Editor.Core.Tests
                 int z = tree.Z;
                 ed.BeginStroke(new TerrainBrush { Tool = TerrainTool.Lower, Radius = 4, Strength = 40 });
                 ed.Dab(tree.MapX / 128f, tree.MapY / 128f);
+                // during the stroke the tree is only drawn lower; its record changes when the stroke ends
+                var preview = ed.FollowPreview().Single(p => p.Object.Source == tree);
+                Assert.True(preview.Z < z - 40);
+                Assert.Equal(z, tree.Z);
                 ed.EndStroke();
+                Assert.Equal(preview.Z, tree.Z);
                 Assert.True(tree.Z < z - 40);
                 Assert.InRange(tree.Z - ed.GroundZ(tree.MapX, tree.MapY), -2, 2);
                 Assert.True(ed.FixedChanged);

@@ -7,6 +7,7 @@
 #   move <x> <y>               hover (the status bar then names the point and any object under it)
 #   click <x> <y> [ctrl|shift] left click, window-relative pixels (as in a full `shot`), optionally with Ctrl or Shift held
 #   drag <x1> <y1> <x2> <y2>   left drag in 20 steps
+#   down <x> <y> / up <x> <y>  press / release the left button there (move in between; shot mid-drag)
 #   key <keys>                 SendKeys string: {PGUP} ^z ^s {ESC} {END} {DEL} [ ] ...
 #   stop                       close the editor (kills it: no unsaved-changes prompt)
 param([Parameter(Mandatory = $true)][string]$cmd, [Parameter(ValueFromRemainingArguments = $true)][string[]]$rest)
@@ -93,6 +94,16 @@ switch ($cmd) {
         if ($mod) { [U9Win]::keybd_event([byte]$mod, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 50 }
         [U9Win]::mouse_event(2, 0, 0, 0, 0); Start-Sleep -Milliseconds 50; [U9Win]::mouse_event(4, 0, 0, 0, 0)
         if ($mod) { Start-Sleep -Milliseconds 50; [U9Win]::keybd_event([byte]$mod, 0, 2, [IntPtr]::Zero) }
+    }
+    'down' {
+        $r = Select-EditorWindow
+        Move-To $r $rest[0] $rest[1]
+        [U9Win]::mouse_event(2, 0, 0, 0, 0)
+    }
+    'up' {
+        $r = Select-EditorWindow
+        Move-To $r $rest[0] $rest[1]
+        [U9Win]::mouse_event(4, 0, 0, 0, 0)
     }
     'drag' {
         $r = Select-EditorWindow
