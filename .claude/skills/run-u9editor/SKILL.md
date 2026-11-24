@@ -47,7 +47,9 @@ road in the view above (the title gains ` *`, the status bar says `Terrain: rais
 tool list is the combo box at 1135,351; with it open, Paint texture is at 1135,493; the Texture field is at
 1245,495 (`click 1245 495` then `key "^a11{TAB}"`). On Britannia `--look 440,540 --distance 40 --top-down` shows
 open grass at the upper left to paint into (`drag 120 380 250 420`); the panel names what the texture blends into. `key "{]}"` widens the brush by a quarter, `click 500 700 ctrl` takes
-the ground's texture (Paint) or height (Flatten) under that pixel. A drag of that length at
+the ground's texture (Paint) or height (Flatten) under that pixel. Below the check boxes: Water height (field at 1148,604:
+`click 1148 604` then `key "^a440{ENTER}"` floods Moonglow's gate road) and the texture palette (first row of
+thumbnails at y 645, 40 px apart from x 1055). A drag of that length at
 strength 20 builds a hill some 45 units high: the default (6) is gentler.
 
 | Command | Does |

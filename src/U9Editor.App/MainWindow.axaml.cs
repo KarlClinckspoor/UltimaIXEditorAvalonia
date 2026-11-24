@@ -713,6 +713,7 @@ namespace U9Editor.App
             }
             editor.SetWaterHeight(h);
             StatusText.Text = $"Water level {h:0.##} (Ctrl+Z takes it back).";
+            View.Focus();       // so Ctrl+Z reaches the editor, not the field
         }
 
         void OnWaterKey(object sender, KeyEventArgs e)
