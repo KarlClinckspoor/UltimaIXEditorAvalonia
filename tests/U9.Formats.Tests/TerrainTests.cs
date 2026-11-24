@@ -145,6 +145,37 @@ namespace U9.Formats.Tests
         }
 
         [Fact]
+        public void CopiedChunksThatComeBackAreSharedAgainOnSave()
+        {
+            // Moonglow: 504 chunks for 1,024 tiles (Britannia shares none)
+            var bytes = File.ReadAllBytes(GameData.PathOf(Path.Combine("static", "terrain.4")));
+            var t = TerrainMap.Read(bytes);
+            // a tile whose chunk other tiles share
+            int tile = Enumerable.Range(0, t.TileChunks.Length).First(i => t.TileChunks.Count(c => c == t.TileChunks[i]) > 1);
+            int x = tile % t.TilesX * 16 + 3, y = tile / t.TilesX * 16 + 5;
+            var was = t.GetPoint(x, y);
+            int chunks = t.Chunks.Count;
+
+            t.SetPoint(x, y, was.WithHeight((was.Height + 9) % 4096));
+            Assert.Equal(chunks + 1, t.Chunks.Count);
+            t.SetPoint(x, y, was);                                  // taken back
+            Assert.Equal(1, t.ShareCopiedChunks());
+            Assert.Equal(bytes, t.ToBytes());
+
+            // a real change keeps its copy, and the other tiles keep the old points
+            t.SetPoint(x, y, was.WithHeight((was.Height + 9) % 4096));
+            Assert.Equal(0, t.ShareCopiedChunks());
+            Assert.Equal((was.Height + 9) % 4096, t.GetPoint(x, y).Height);
+            int other = Enumerable.Range(0, t.TileChunks.Length).First(i => i != tile && TerrainMap.Read(bytes).TileChunks[i] == TerrainMap.Read(bytes).TileChunks[tile]);
+            Assert.Equal(was, t.GetPoint(other % t.TilesX * 16 + 3, other / t.TilesX * 16 + 5));
+            // and editing again after sharing still copies first
+            t.SetPoint(x, y, was);
+            t.ShareCopiedChunks();
+            t.SetPoint(other % t.TilesX * 16 + 3, other / t.TilesX * 16 + 5, was.WithHeight(1));
+            Assert.Equal(was, t.GetPoint(x, y));
+        }
+
+        [Fact]
         public void PointBitsRoundTrip()
         {
             var p = new TerrainPoint(0).WithHeight(4095).WithTexture(1023).WithFrame(63).WithHole(true).WithRotation(3);

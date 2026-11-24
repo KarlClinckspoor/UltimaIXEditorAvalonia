@@ -383,7 +383,7 @@ namespace U9Editor.Core
             }
             if (FixedChanged && Fixed != null && fixedPath != null) { Write(Fixed, fixedPath); written.Add(fixedPath); fixedSaved = fixedVersion; }
             if (NonfixedChanged && Nonfixed != null && nonfixedPath != null) { Write(Nonfixed, nonfixedPath); written.Add(nonfixedPath); nonfixedSaved = nonfixedVersion; }
-            if (TerrainChanged && Terrain != null && TerrainPath != null) { Write(Terrain.ToBytes(), TerrainPath); written.Add(TerrainPath); terrainSaved = terrainVersion; }
+            if (TerrainChanged && Terrain != null && TerrainPath != null) { Terrain.ShareCopiedChunks(); Write(Terrain.ToBytes(), TerrainPath); written.Add(TerrainPath); terrainSaved = terrainVersion; }
             return written;
         }
 

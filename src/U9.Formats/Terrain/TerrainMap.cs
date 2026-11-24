@@ -183,6 +183,48 @@ namespace U9.Formats.Terrain
             Chunks[TileChunks[tile]][x % TileSize, y % TileSize] = p;
         }
 
+        /// <summary>
+        /// Points tiles at an identical chunk where <see cref="SetPoint"/> gave them a copy that has come back to the
+        /// same points (an edit taken back), or that matches another, and drops copies no tile uses. Chunks the file
+        /// was loaded with keep their numbers. Returns how many chunks were dropped.
+        /// </summary>
+        public int ShareCopiedChunks()
+        {
+            if (Chunks.Count <= loadedChunks) return 0;
+            var first = new Dictionary<string, int>();
+            string Key(TerrainChunk c)
+            {
+                var b = new byte[TerrainChunk.ByteSize];
+                Buffer.BlockCopy(c.Points, 0, b, 0, b.Length);
+                return Convert.ToBase64String(b);
+            }
+            for (int i = 0; i < Chunks.Count; i++) first.TryAdd(Key(Chunks[i]), i);
+            for (int t = 0; t < TileChunks.Length; t++)
+            {
+                int c = TileChunks[t];
+                if (c < loadedChunks || c >= Chunks.Count) continue;
+                int j = first[Key(Chunks[c])];
+                if (j < c) TileChunks[t] = (ushort)j;
+            }
+            var used = new bool[Chunks.Count];
+            foreach (var c in TileChunks) if (c < used.Length) used[c] = true;
+            var renumber = new int[Chunks.Count];
+            var kept = new List<TerrainChunk>();
+            for (int i = 0; i < Chunks.Count; i++)
+            {
+                if (i >= loadedChunks && !used[i]) { renumber[i] = -1; continue; }
+                renumber[i] = kept.Count;
+                kept.Add(Chunks[i]);
+            }
+            int dropped = Chunks.Count - kept.Count;
+            if (dropped == 0) return 0;
+            for (int t = 0; t < TileChunks.Length; t++) if (TileChunks[t] < renumber.Length) TileChunks[t] = (ushort)renumber[TileChunks[t]];
+            Chunks.Clear();
+            Chunks.AddRange(kept);
+            useCountsOf = null;
+            return dropped;
+        }
+
         // tiles using each chunk, counted once per tile table (a brush sets thousands of points a second)
         int[] useCounts;
         ushort[] useCountsOf;
