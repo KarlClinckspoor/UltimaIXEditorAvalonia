@@ -45,6 +45,8 @@ namespace U9Editor.Core
             public List<(ObjectMap Map, ObjectEdit Edit)> Follow;
             /// <summary>The terrain header's water level, as stored (quarter point heights): before and after.</summary>
             public (int Before, int After)? Water;
+            /// <summary>A book's title and text before and after (null: no record).</summary>
+            public (int Number, (string Title, string Text)? Before, (string Title, string Text)? After)? Book;
             /// <summary>Script slots the step changed: ops before and after (empty = unused).</summary>
             public List<(int Slot, TriggerOp[] Before, TriggerOp[] After)> Scripts;
         }
@@ -94,7 +96,7 @@ namespace U9Editor.Core
         public bool FixedChanged => FixedTop != fixedSavedAt;
         public bool NonfixedChanged => NonfixedTop != nonfixedSavedAt;
         public bool ScriptsChanged => ScriptsTop != scriptsSavedAt;
-        public bool HasChanges => FixedChanged || NonfixedChanged || ScriptsChanged || TerrainChanged;
+        public bool HasChanges => FixedChanged || NonfixedChanged || ScriptsChanged || TerrainChanged || BooksChanged;
         public string UndoDescription => undo.Count > 0 ? undo[^1].Description : null;
         public string RedoDescription => redo.Count > 0 ? redo[^1].Description : null;
 
@@ -212,6 +214,7 @@ namespace U9Editor.Core
                 foreach (var f in Enumerable.Reverse(s.Follow)) { f.Map.Undo(f.Edit); Bump(f.Map, -1); Publish(f.Edit); }
             if (s.Terrain != null) { ApplyTerrain(s.Terrain, after: false); terrainVersion--; }
             if (s.Water is { } wu) { SetWater(wu.Before); terrainVersion--; }
+            if (s.Book is { } bu) PutBook(bu.Number, bu.Before);
             // scripts first: listeners of Changed rebuild the link list from them
             if (s.Scripts != null) { foreach (var sc in Enumerable.Reverse(s.Scripts)) Scripts.Set(sc.Slot, sc.Before); scriptVersion--; }
             if (s.Map != null)
@@ -239,6 +242,7 @@ namespace U9Editor.Core
             }
             if (s.Terrain != null) { ApplyTerrain(s.Terrain, after: true); terrainVersion++; }
             if (s.Water is { } wr) { SetWater(wr.After); terrainVersion++; }
+            if (s.Book is { } br) PutBook(br.Number, br.After);
             if (s.Follow != null)
                 foreach (var f in s.Follow) { f.Map.Redo(f.Edit); Bump(f.Map, +1); Publish(f.Edit); }
             undo.Add(s);
@@ -405,6 +409,14 @@ namespace U9Editor.Core
                 Scripts.Save();
                 written.Add(Scripts.Path);
                 scriptsSavedAt = ScriptsTop;
+            }
+            if (BooksChanged && Books != null)
+            {
+                string backup = Books.Path + ".orig";
+                if (File.Exists(Books.Path) && !File.Exists(backup)) File.Copy(Books.Path, backup);
+                Books.Save();
+                written.Add(Books.Path);
+                booksSavedAt = BooksTop;
             }
             if (FixedChanged && Fixed != null && fixedPath != null) { Write(Fixed, fixedPath); written.Add(fixedPath); fixedSavedAt = FixedTop; }
             if (NonfixedChanged && Nonfixed != null && nonfixedPath != null) { Write(Nonfixed, nonfixedPath); written.Add(nonfixedPath); nonfixedSavedAt = NonfixedTop; }

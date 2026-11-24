@@ -103,6 +103,14 @@ the ground); `[` / `]` turn the group about its middle, positions and facings to
 Ctrl+D (copies one point east, then selected) and Delete act on all of them, each as one undo step over both
 object files. The panel's fields still show and set the last object picked. Esc clears the selection.
 
+What objects carry (Contents tab): a nonfixed object's properties by the game's own names (Book Number, Quantity,
+Light Range, Creature Type, Spawn Percent... 69 of them), chained segments included; pick one and Set writes its two
+values (one undo step). Inside lists what a container holds or an NPC carries (with quantities); picking an item
+shows its properties, to change say the coins in a bag. For anything with a Book Number (books, plaques, signs,
+grave markers) the panel shows the book's title and text: Set text changes them (one undo step), and Ctrl+S writes
+`static/BOOKS-EN.FLX` (first time keeping `.orig`). The book's number can be changed like any property, to point
+an object at another text.
+
 Finding things (Find tab): type words of a type's name (`telescope`, `orb moons`), a type number (`2894`), `#id`
 of an object here, `link:n` of a nonfixed object, or `fixed` / `nonfixed`, and press Enter; all words must match.
 All maps searches every map's object files (open maps with their unsaved edits); the first time reads them all.
@@ -150,6 +158,8 @@ Agents drive the running editor with `.claude/skills/run-u9editor/driver.ps1` (s
 | Object types (`TYPES.DAT`, `TYPENAME.FLX`) | yes | not yet | — |
 | Models (`sappear.flx`) | yes (all 3,748 models, every LOD) | not yet | — |
 | Trigger scripts (`TRIGGERS.FLX`): map changes | yes | map-change scripts (retarget, new links) | unchanged slots kept |
+| Book texts (`BOOKS-EN.FLX`) | yes | yes (titles and texts) | all 460 records |
+| Object properties (nonfixed property segments) | yes, named, chains followed, contents | values | — |
 
 ### Findings from the shipped files
 
@@ -177,6 +187,18 @@ Agents drive the running editor with `.claude/skills/run-u9editor/driver.ps1` (s
 - Map changes: a nonfixed trigger zone (usually type 1111) names a `TRIGGERS.FLX` script whose op 0x1F sends the
   player to the object with a matching link in the destination map. The cave between Buccaneer's Den and New
   Magincia is map 89 ("Buc2NewMag"), entered at points (573.0, 262.4) and (629.0, 248.9) on Britannia.
+- Object properties: u9.exe names them in a table of 69 name pointers (file offset 0x38D310 in the GOG exe)
+  followed by a parallel table of their ids (0x38D440): 0x05 Contents, 0x11 Quantity, 0x4D Book Number,
+  0x21-0x23 Light Color / Range / Flicker, 0x80-0x83 Creature Type, Spawn Percent, Max Of Type, Creature Link Num,
+  0x90-0x94 the ambiance sounds, 0xFF Next Property Pointer and so on. Checked on the shipped objects: Book Number
+  sits on books, plaques and grave markers, Quantity on coins and arrows, the creature ones on monster generators.
+  For Contents and Next Property Pointer the two u16 values are one 32-bit data offset (A low): Next Property
+  Pointer leads to the object's next 16-byte segment (monster generators keep their spawn settings there), Contents
+  to the first record inside it, and those records chain through their link field (+0x00). Contained records are
+  in no subchunk list (a bag on Britannia holds coins, two silks and a white potion).
+- Books: `BOOKS-EN.FLX` record n - 1 is book number n (titles start "n: "): a u32 length and the NUL-terminated
+  title, a u32 length and the text, CR LF lines and `` `f1 `` / `` `f2 `` font codes. Record 160 holds an embedded
+  document after its title (a leftover); record 4 is a commented "testshop" template.
 - Object pages: +0x04 is not a dependable end of a page's data. In the shipped fixed files it points inside or
   before the live records in 1,390 of 3,175 pages (in fixed.4's chunk 7,7 it is 0xC0 with records from 0xF0), and
   nonfixed pages hold records no list reaches (contained items). New records go above +0x04, every live record and

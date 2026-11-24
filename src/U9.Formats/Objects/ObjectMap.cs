@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
@@ -39,7 +39,7 @@ namespace U9.Formats.Objects
     /// position gives, and the records counted in a chunk's pages add up to those in its lists. The file is kept as
     /// bytes and edited in place, so it writes back unchanged unless edited.
     /// </summary>
-    public sealed class ObjectMap
+    public sealed partial class ObjectMap
     {
         public const int PageSize = 4096, PageHeader = 0x60, ChunkUnits = 4096, SubchunkUnits = 1024;
 

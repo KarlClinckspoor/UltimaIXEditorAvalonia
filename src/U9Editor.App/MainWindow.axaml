@@ -91,7 +91,7 @@
           <TextBlock x:Name="ObjectDetails" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
         </StackPanel>
         <TabControl x:Name="SideTabs" Padding="0,4,0,0">
-          <TabItem Header="Map links" FontSize="13">
+          <TabItem Header="Links" FontSize="13" ToolTip.Tip="Map links: doors, caves and teleports to other maps">
             <DockPanel>
               <TextBlock x:Name="LinksHeader" DockPanel.Dock="Top" Text="Map links" FontWeight="SemiBold" Margin="0,0,0,2" />
               <TextBlock DockPanel.Dock="Top" Opacity="0.6" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"
@@ -115,7 +115,7 @@
               <ListBox x:Name="LinksList" FontSize="12" SelectionChanged="OnLinkSelected" DoubleTapped="OnLinkGo" />
             </DockPanel>
           </TabItem>
-          <TabItem Header="Place object" FontSize="13">
+          <TabItem Header="Place" FontSize="13" ToolTip.Tip="Place a new object of any type">
             <DockPanel>
               <TextBox x:Name="PlaceSearch" DockPanel.Dock="Top" Watermark="Search types by name or number" FontSize="12" TextChanged="OnPlaceSearch" Margin="0,0,0,4" />
               <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,6,0,0">
@@ -133,6 +133,36 @@
               </StackPanel>
               <ListBox x:Name="PlaceList" FontSize="12" DoubleTapped="OnPlace" />
             </DockPanel>
+          </TabItem>
+          <TabItem Header="Contents" FontSize="13">
+            <ScrollViewer>
+              <StackPanel Spacing="4">
+                <TextBlock x:Name="PropHeader" FontSize="12" TextWrapping="Wrap" Text="Select a nonfixed object to see its properties and what is inside it." />
+                <ListBox x:Name="PropList" FontSize="12" MaxHeight="170" SelectionChanged="OnPropSelected" />
+                <StackPanel Orientation="Horizontal" Spacing="6" x:Name="PropEdit" IsEnabled="False">
+                  <TextBlock Text="A" VerticalAlignment="Center" FontSize="12" />
+                  <TextBox x:Name="PropA" Width="70" FontSize="12" KeyDown="OnPropKey" />
+                  <TextBlock Text="B" VerticalAlignment="Center" FontSize="12" />
+                  <TextBox x:Name="PropB" Width="70" FontSize="12" KeyDown="OnPropKey" />
+                  <Button Content="Set" Click="OnPropSet" FontSize="12" ToolTip.Tip="Writes the two values (0-65535) of the selected property; Enter does the same. Ctrl+Z takes it back." />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Inside" FontWeight="SemiBold" VerticalAlignment="Center" />
+                  <Button x:Name="PropOwnerButton" Content="Back to the object" Click="OnPropOwner" FontSize="11" IsVisible="False" />
+                </StackPanel>
+                <ListBox x:Name="ContentsList" FontSize="12" MaxHeight="130" SelectionChanged="OnContentSelected" />
+                <StackPanel x:Name="BookPanel" Spacing="4" IsVisible="False">
+                  <TextBlock x:Name="BookHeader" FontWeight="SemiBold" />
+                  <TextBox x:Name="BookTitle" FontSize="12" />
+                  <TextBox x:Name="BookText" FontSize="12" AcceptsReturn="True" TextWrapping="Wrap" Height="190" />
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button Content="Set text" Click="OnBookSet" FontSize="12" ToolTip.Tip="Keeps the new title and text (one undo step); Ctrl+S writes the books file (first time keeping .orig)" />
+                    <TextBlock Opacity="0.6" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap" Width="230"
+                               Text="Lines end with CR LF; `f1, `f2 ... pick the font. Other objects showing this book change too." />
+                  </StackPanel>
+                </StackPanel>
+              </StackPanel>
+            </ScrollViewer>
           </TabItem>
           <TabItem Header="Find" FontSize="13">
             <DockPanel>

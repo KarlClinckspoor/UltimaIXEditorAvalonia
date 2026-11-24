@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -102,7 +102,7 @@ namespace U9Editor.App
                     ?? GameFolder.FindNear(AppContext.BaseDirectory);
             if (g == null)
             {
-                StatusText.Text = "Open the Ultima IX folder (File > Open game folderâ€¦): the one holding static/ and runtime/.";
+                StatusText.Text = "Open the Ultima IX folder (File > Open game folder…): the one holding static/ and runtime/.";
                 return;
             }
             OpenGame(g, Program.GameDataAtStart != null ? Program.MapAtStart : settings.LastMap);
@@ -123,6 +123,11 @@ namespace U9Editor.App
             game = g;
             templates = new ObjectTemplates(g.Root);
             search = null;
+            books = null;
+            var booksPath = U9.Formats.Books.BookTexts.FilesIn(g.StaticFolder).FirstOrDefault();
+            if (booksPath != null)
+                try { books = U9.Formats.Books.BookTexts.Load(booksPath); }
+                catch (Exception ex) when (ex is IOException || ex is InvalidDataException) { books = null; }
             settings.GameFolder = g.Root;
             bitmaps?.Dispose();
             bitmaps = null;
@@ -149,7 +154,7 @@ namespace U9Editor.App
             MapBox.ItemsSource = maps;
             var pick = maps.FirstOrDefault(m => m.Number == mapNumber) ?? maps.FirstOrDefault(m => m.Number == 9) ?? maps.FirstOrDefault();
             MapBox.SelectedItem = pick;
-            Title = $"U9 Editor â€” {g.Root}";
+            Title = $"U9 Editor — {g.Root}";
         }
 
         void OnMapChanged(object sender, SelectionChangedEventArgs e)
@@ -222,7 +227,7 @@ namespace U9Editor.App
 
         SceneObjects LoadObjects(int number, MapSpace space, TerrainRaster raster)
         {
-            if (editor != null) { editor.Changed -= OnObjectsChanged; editor.TerrainEdited -= OnTerrainEdited; editor.WaterEdited -= OnWaterEdited; }
+            if (editor != null) { editor.Changed -= OnObjectsChanged; editor.TerrainEdited -= OnTerrainEdited; editor.WaterEdited -= OnWaterEdited; editor.BookEdited -= OnBookEdited; }
             // a map with edits keeps them while other maps are looked at
             if (editors.TryGetValue(number, out var kept))
             {
@@ -238,11 +243,13 @@ namespace U9Editor.App
             editor.Scripts = triggerScripts;
             editor.Types = typeTable;
             editor.Templates = templates;
+            editor.Books = books;
             editor.Changed += OnObjectsChanged;
             editor.Terrain = terrain;
             editor.TerrainPath = current?.TerrainPath;
             editor.TerrainEdited += OnTerrainEdited;
             editor.WaterEdited += OnWaterEdited;
+            editor.BookEdited += OnBookEdited;
             WaterHeight.Text = (terrain.WaterLevel / 4f).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
             View.Editor = editor;       // without it the view cannot start a drag
             currentNonfixed = editor.Nonfixed;
@@ -287,6 +294,7 @@ namespace U9Editor.App
             selected = o;
             bool on = o != null && editor != null;
             ObjectFields.IsEnabled = ObjectButtons.IsEnabled = on;
+            ShowContents(on ? o : null, sameObject: propOwner == o);
             if (!on)
             {
                 ObjectTitle.Text = "Click an object to select it; drag it to move it.";
@@ -319,7 +327,7 @@ namespace U9Editor.App
         void UpdateTitle()
         {
             string dirty = editors.Values.Any(e => e.HasChanges) ? " *" : "";
-            Title = $"U9 Editor â€” {game?.Root}{dirty}";
+            Title = $"U9 Editor — {game?.Root}{dirty}";
             UndoItem.Header = editor?.UndoDescription != null ? $"_Undo {editor.UndoDescription}" : "_Undo";
             RedoItem.Header = editor?.RedoDescription != null ? $"_Redo {editor.RedoDescription}" : "_Redo";
         }
@@ -398,7 +406,7 @@ namespace U9Editor.App
 
         void Turn(float degrees)
         {
-            if (Many is { } g) { Edit(() => { editor.TurnGroup(g, degrees); StatusText.Text = $"Turned {g.Count} objects {degrees:0.#}Â° about their middle. Ctrl+Z takes it back."; }); return; }
+            if (Many is { } g) { Edit(() => { editor.TurnGroup(g, degrees); StatusText.Text = $"Turned {g.Count} objects {degrees:0.#}° about their middle. Ctrl+Z takes it back."; }); return; }
             if (selected == null) return;
             var o = selected;
             Edit(() => editor.Rotate(o, MapEditor.Turned(o.Source.Rotation, degrees)));
@@ -522,6 +530,130 @@ namespace U9Editor.App
             View.State.SelectedX = (int)a.PointX; View.State.SelectedRow = (int)a.PointRow;
             View.Redraw();
             StatusText.Text = $"Arrived from map {li.Link.SourceMap} at ({a.PointX:F2}, {a.PointRow:F2}), height {a.TerrainHeight:F1}";
+        }
+
+        // ---- what objects carry: properties, contents, books
+
+        U9.Formats.Books.BookTexts books;
+        SceneObject propOwner;          // the selected object
+        MapObject propTarget;           // it, or the thing inside it whose properties are shown
+
+        sealed class PropItem
+        {
+            public ObjectProperty Property;
+            public override string ToString() => $"{Property.Name}: {Property.A}, {Property.B}" + (Property.Id == PropertyNames.Contents ? "  (where the contents are)" : "");
+        }
+
+        sealed class ContentItem
+        {
+            public MapObject Item;
+            public string Text;
+            public override string ToString() => Text;
+        }
+
+        void ShowContents(SceneObject o, bool sameObject)
+        {
+            if (!sameObject || propTarget == null || propTarget.Removed) propTarget = o?.Source;
+            propOwner = o;
+            PropOwnerButton.IsVisible = o != null && propTarget != o.Source;
+            PropEdit.IsEnabled = false;
+            if (o == null || editor == null || o.Kind != ObjectFileKind.Nonfixed)
+            {
+                PropHeader.Text = o == null ? "Select a nonfixed object to see its properties and what is inside it." : "Fixed objects (scenery) have no properties.";
+                PropList.ItemsSource = null;
+                ContentsList.ItemsSource = null;
+                BookPanel.IsVisible = false;
+                return;
+            }
+            var props = editor.PropertiesOf(propTarget);
+            string name = propTarget == o.Source ? (o.Name ?? $"type {o.Source.Type}") : (typeNames?[propTarget.Type] ?? $"type {propTarget.Type}");
+            PropHeader.Text = props.Count == 0 ? $"{name}: no properties." : $"{name}{(propTarget == o.Source ? "" : $" (inside {o.Name ?? "the object"})")}: {props.Count} properties. Pick one to change it.";
+            PropList.ItemsSource = props.Select(p => new PropItem { Property = p }).ToList();
+            var inside = editor.ContentsOf(propTarget);
+            ContentsList.ItemsSource = inside.Select(i => new ContentItem
+            {
+                Item = i,
+                Text = $"{typeNames?[i.Type] ?? "type " + i.Type} ({i.Type})" +
+                       string.Concat(editor.PropertiesOf(i).Where(p => p.Id == PropertyNames.Quantity).Select(p => $", {p.A} of them")) +
+                       (editor.ContentsOf(i).Count is int n && n > 0 ? $", holds {n}" : ""),
+            }).ToList();
+            var book = props.FirstOrDefault(p => p.Id == PropertyNames.BookNumber);
+            BookPanel.IsVisible = book != null && books != null;
+            if (BookPanel.IsVisible)
+            {
+                var text = books.Get(book.A);
+                BookHeader.Text = text != null ? $"Book {book.A}" : $"Book {book.A} (no text yet: Set text makes one)";
+                BookTitle.Text = text?.Title ?? $"{book.A}: ";
+                BookText.Text = text?.Text ?? "";
+                bookShown = book.A;
+            }
+        }
+
+        int bookShown;
+
+        void OnBookEdited(int number)
+        {
+            if (editor != null) editors[editor.MapNumber] = editor;
+            if (number == bookShown && propOwner != null) ShowContents(propOwner, sameObject: true);
+            UpdateTitle();
+        }
+
+        void OnPropSelected(object sender, SelectionChangedEventArgs e)
+        {
+            if (PropList.SelectedItem is not PropItem pi) { PropEdit.IsEnabled = false; return; }
+            bool editable = pi.Property.Id != PropertyNames.Contents;
+            PropEdit.IsEnabled = editable;
+            PropA.Text = pi.Property.A.ToString();
+            PropB.Text = pi.Property.B.ToString();
+        }
+
+        void OnPropKey(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter) { OnPropSet(null, null); e.Handled = true; }
+        }
+
+        void OnPropSet(object sender, RoutedEventArgs e)
+        {
+            if (PropList.SelectedItem is not PropItem pi || propOwner == null || propTarget == null) return;
+            if (!int.TryParse(PropA.Text, out int a) || !int.TryParse(PropB.Text, out int b) || a < 0 || b < 0 || a > 0xFFFF || b > 0xFFFF)
+            {
+                StatusText.Text = "Property values are whole numbers from 0 to 65535.";
+                return;
+            }
+            var owner = propOwner;
+            var target = propTarget;
+            Edit(() =>
+            {
+                editor.SetProperty(owner, target, pi.Property, a, b);
+                StatusText.Text = $"{pi.Property.Name} set to {a}, {b}. Ctrl+Z takes it back.";
+            });
+            ShowContents(owner, sameObject: true);
+        }
+
+        void OnContentSelected(object sender, SelectionChangedEventArgs e)
+        {
+            if (ContentsList.SelectedItem is not ContentItem ci || propOwner == null) return;
+            propTarget = ci.Item;
+            ShowContents(propOwner, sameObject: true);
+        }
+
+        void OnPropOwner(object sender, RoutedEventArgs e)
+        {
+            propTarget = propOwner?.Source;
+            ShowContents(propOwner, sameObject: true);
+        }
+
+        void OnBookSet(object sender, RoutedEventArgs e)
+        {
+            if (editor == null || books == null || bookShown <= 0) return;
+            int n = bookShown;
+            editors[editor.MapNumber] = editor;
+            Edit(() =>
+            {
+                editor.SetBook(n, BookTitle.Text ?? "", (BookText.Text ?? "").Replace("\r\n", "\n").Replace("\n", "\r\n"));
+                StatusText.Text = $"Book {n}'s text changed (Ctrl+S writes it, Ctrl+Z takes it back).";
+            });
+            UpdateTitle();
         }
 
         // ---- finding objects, going places, bookmarks
