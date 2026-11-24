@@ -16,13 +16,17 @@ It reads and writes the game's own files, so changes show up in the real game.
   the trigger scripts in `TRIGGERS.FLX`.
 - **Terrain**: brushes to raise, lower, smooth, flatten, roughen, paint textures (with the map's own blended
   edges) and cut holes; objects on the ground follow it. Change the sea level. Saves `terrain.N`.
+- **Scenes**: the game's in-engine scenes (camera moves chained by trigger scripts), listed per map and played
+  in the 3D view; change a move's duration and style, or put a camera point where the view is. Saves
+  `TRIGGERS.FLX` and `nonfixed.N`.
 - **Formats**: readers and writers for FLX archives, terrain, object files, types, models and bitmaps, tested
   for byte-identical round trips over every shipped file.
 - Saving keeps each original file beside it as `.orig` the first time.
 
 Checked in the game: a retargeted cave link takes the Avatar to the new arrival, a raised hill puts him on
 its top at the height the editor reckons, objects that followed the ground sit on it, and painted textures blend
-as in the editor.
+as in the editor. The opening scene on Earth plays in the game as the editor shows it, and a camera point moved in
+the editor changes it there.
 
 ## Status and roadmap
 
@@ -35,8 +39,9 @@ Usable for object, link, terrain, contents and model editing on any map. Work is
 4. **Search and navigation** (done): find objects by type or name, jump to link destinations, bookmarks.
 5. **Object contents** (done): book texts, container contents, NPC and object properties.
 6. **New models through Blender** (done): import and export `sappear.flx` models via glTF.
-7. **Cutscene viewer and editor**: play the game's in-engine cutscenes in the 3D view (starting with the first one,
-   the camera entering the Avatar's house) and edit their camera moves, timing and actors.
+7. **Cutscene viewer and editor** (camera part done): play the game's in-engine cutscenes in the 3D view (starting
+   with the first one, the camera entering the Avatar's house) and edit their camera moves and timing. Still to
+   come: the actors (NPC moves and animations), speech and the other ops the scenes' scripts run.
 8. **Object viewer, browser and properties**: any object in its own 3D view; the objects around the selection or
    camera; an add-object tool that filters the types; finding objects by property, model or contents; and editing
    properties, both type-wide in `TYPES.DAT` (a sword's damage and damage type, health) and per object, every field
@@ -156,7 +161,20 @@ with blending, the material on the clicked side of a transition quad) from the g
 writes `static/terrain.N` (first time keeping `.orig`). Checked in the game: a hill raised at Britannia's bridge
 (height 607 to 907) put the Avatar on its top at z 3626 (the editor reckons 3628).
 
-Start options for scripted pictures: `--look X,ROW --distance D --pitch P --yaw Y`.
+Scenes (Scenes tab): the map's in-engine scenes, each the chain of camera moves one object's script starts (on
+Earth, map 14, the timer in the Avatar's house starts the opening: the camera cuts to point 71 outside, glides east
+through 72 and 58 into the bedroom and settles on the bed at 59, 16 seconds). Play runs it in the view (camera points
+hidden; Play again stops and puts the view back), and the slider scrubs through it. Clicking a move looks from its
+camera point and selects it; its fields are the move's duration (half seconds), Glide (off: cut), Straight (off:
+eased), Back (to the view before the scene) and which of the point's scripts run when it ends. Set move writes them
+into the trigger script (every object running that script changes); Point from view moves the camera point to the
+current view (the point looked at, heading, pitch and distance). Both are undo steps and Ctrl+S saves them. On the
+command line, `u9 scenes <gamedata> <map>` lists the scenes and `u9 camera-point <gamedata> <map> <link> <x> <row>
+<z> <heading> <pitch> [distance]` moves a camera point; `u9 objects <gamedata> <map> [fixed|nonfixed] [--type n]
+[--props]` lists a map's objects.
+
+Start options for scripted pictures: `--look X,ROW --distance D --pitch P --yaw Y`, and `--scene N --scene-time S`
+for the view of the map's scene N (as the Scenes tab lists them) at S seconds.
 `u9 export-web <gamedata> <out> [--maps 9,10] [--texture-max 128] [--no-models]` bakes maps for the WebGL viewer in
 UltimaCartographer (`u9viewer/EXPORT.md` is the contract); it prints a size report (Britannia alone: 73 MB, of which
 37 MB are 128-pixel model textures; every map: 180 MB, 14 s).
@@ -174,7 +192,7 @@ Agents drive the running editor with `.claude/skills/run-u9editor/driver.ps1` (s
 | Fixed / nonfixed objects (`fixed.N`, `nonfixed.N`) | yes | move, turn, copy, delete, place (with undo) | all shipped files |
 | Object types (`TYPES.DAT`, `TYPENAME.FLX`) | yes | not yet | — |
 | Models (`sappear.flx`) | yes (all 3,748 models, every LOD) | one limb, one LOD, from glTF (checked in the game) | — |
-| Trigger scripts (`TRIGGERS.FLX`): map changes | yes | map-change scripts (retarget, new links) | unchanged slots kept |
+| Trigger scripts (`TRIGGERS.FLX`) | yes; map changes and camera moves understood | map-change scripts, camera moves | unchanged slots kept |
 | Book texts (`BOOKS-EN.FLX`) | yes | yes (titles and texts) | all 460 records |
 | Object properties (nonfixed property segments) | yes, named, chains followed, contents | values | — |
 
@@ -213,6 +231,25 @@ Agents drive the running editor with `.claude/skills/run-u9editor/driver.ps1` (s
   Pointer leads to the object's next 16-byte segment (monster generators keep their spawn settings there), Contents
   to the first record inside it, and those records chain through their link field (+0x00). Contained records are
   in no subchunk list (a bag on Britannia holds coins, two silks and a white potion).
+- Trigger scripts (`TRIGGERS.FLX`, run by u9.exe's interpreter at 0x54F850 in the GOG exe): 6,708 scripts of 6-byte
+  ops (u16 op, u16 A, u16 B) using about 90 commands. The op's high byte's low 5 bits minus 16 offset the script's
+  current link (0: no link); A's low 13 bits are the object type (0x1FFF any). The current link starts as the
+  triggering object's link; 0x11 sets it, 0x2C sets how far away targets may be (B x 128 object units, default 10
+  points), 0x1F changes map. Most commands are sent to each object of the type and link in range as an event of its
+  type's compiled usecode, with B: 0x01 activates (a camera point moves the camera; a timer starts), 0x28 makes the
+  objects run their own script B & 3 (OO Trigger A, B, SF Trigger A, B) at once.
+- Usecode: `TYPES.DAT`'s +4 is a type's usecode class; u9.exe binds event handlers to classes from 16 tables of
+  {u16 class, u8 event, u32 handler} at 0x7A2488-0x7A9C30 (536 classes), falling back along the classes' chain.
+  Camera points (type 2218) handle only event 2 (activate, 0x633410).
+- Scenes: a camera point (type 2218, model 1025, an editor-only marker) is the point looked at (its z less 0x40),
+  its rotation the view and its Misc Usecode 1 property (A) the distance in object units. The game reads the rotation
+  through a matrix that is the transpose of the usual one (M01 = 2(xy + wz)), taken as Rz(a)·Rx(b)·Ry(c): heading
+  a + 180° (fronts face south), pitch b, c ignored. Activated with B, it starts a camera process: duration (B &
+  0x7FF) x 500 ms; 0x8000 glide from the current view (cosine-eased, 0x0800 straight), otherwise cut; 0x4000 glide
+  back to the view before; when the time is up 0x2000 runs the point's first OO Trigger script, 0x1000 its second.
+  A newer move replaces one under way; when the last ends the camera returns to the player. Checked in the game:
+  desktop captures of the opening match the editor's frames (house, window, bedroom, bed) in path, timing and
+  pitch, and point 71 moved up and tilted 35° down makes the scene open on the roof seen from above.
 - Models (`sappear.flx`): the header's +0x08 is the centre of the vertices' box, +0x14 its height, +0x18 the
   distance from that centre to the farthest vertex, +0x1C / +0x28 the same centre and radius again, +0x30 / +0x3C the
   box. The box's maximum starts at FLT_MIN rather than -FLT_MAX in the original tool, so no maximum is below ~0

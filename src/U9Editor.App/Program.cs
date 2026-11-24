@@ -17,6 +17,9 @@ namespace U9Editor.App
         public static string ScreenshotPath;
         /// <summary>--look X,ROW --distance D --pitch P --yaw Y: where the camera starts (point coordinates, world units, degrees).</summary>
         public static float LookX = float.NaN, LookRow = float.NaN, Distance = float.NaN, Pitch = float.NaN, Yaw = float.NaN;
+        /// <summary>--scene N --scene-time S: start with the view of the map's scene N (as the Scenes tab lists them, from 0) at S seconds.</summary>
+        public static int SceneAtStart = -1;
+        public static float SceneTimeAtStart;
 
         [STAThread]
         public static void Main(string[] args)
@@ -35,6 +38,8 @@ namespace U9Editor.App
                 }
                 else if (a == "--distance" && i + 1 < args.Length) float.TryParse(args[++i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out Distance);
                 else if (a == "--pitch" && i + 1 < args.Length) float.TryParse(args[++i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out Pitch);
+                else if (a == "--scene" && i + 1 < args.Length) int.TryParse(args[++i], out SceneAtStart);
+                else if (a == "--scene-time" && i + 1 < args.Length) float.TryParse(args[++i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out SceneTimeAtStart);
                 else if (a == "--yaw" && i + 1 < args.Length) float.TryParse(args[++i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out Yaw);
                 else if (a == "--size" && i + 1 < args.Length)
                 {

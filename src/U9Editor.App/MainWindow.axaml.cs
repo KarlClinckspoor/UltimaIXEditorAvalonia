@@ -115,6 +115,12 @@ namespace U9Editor.App
             if (!float.IsNaN(Program.Distance)) View.Camera.Distance = Program.Distance;
             if (!float.IsNaN(Program.Pitch)) View.Camera.Pitch = Program.Pitch;
             if (!float.IsNaN(Program.Yaw)) View.Camera.Yaw = Program.Yaw;
+            if (Program.SceneAtStart >= 0 && Program.SceneAtStart < scenes.Count)
+            {
+                SideTabs.SelectedIndex = 4;
+                ScenesList.SelectedIndex = Program.SceneAtStart;
+                SceneTime.Value = Program.SceneTimeAtStart;      // shows that moment, camera points hidden
+            }
             View.Redraw();
         }
 
@@ -182,6 +188,7 @@ namespace U9Editor.App
             var objects = LoadObjects(m.Number, space, raster);
             View.SetObjects(objects);
             ShowLinks(m, objects);
+            if (sceneTimer != null || viewBeforeScene != null) StopScene(restore: false);
             modelScene = null;
             if (appearances != null && bitmaps != null && typeTable != null)
             {
@@ -202,6 +209,7 @@ namespace U9Editor.App
             UpdateTitle();
             RefreshTypeList();
             View.FrameMap();
+            ShowScenes();
             if (lookAfterLoad is { } look) { View.LookAt(look.X, look.Row, 30); lookAfterLoad = null; }
             ShowMapInfo();
             StatusText.Text = "Click selects, dragging the selection moves it. Drag orbits, Shift+drag pans, wheel zooms, W/A/S/D move.";
@@ -227,7 +235,7 @@ namespace U9Editor.App
 
         SceneObjects LoadObjects(int number, MapSpace space, TerrainRaster raster)
         {
-            if (editor != null) { editor.Changed -= OnObjectsChanged; editor.TerrainEdited -= OnTerrainEdited; editor.WaterEdited -= OnWaterEdited; editor.BookEdited -= OnBookEdited; }
+            if (editor != null) { editor.Changed -= OnObjectsChanged; editor.TerrainEdited -= OnTerrainEdited; editor.WaterEdited -= OnWaterEdited; editor.BookEdited -= OnBookEdited; editor.ScriptsEdited -= OnScriptsEdited; }
             // a map with edits keeps them while other maps are looked at
             if (editors.TryGetValue(number, out var kept))
             {
@@ -250,6 +258,7 @@ namespace U9Editor.App
             editor.TerrainEdited += OnTerrainEdited;
             editor.WaterEdited += OnWaterEdited;
             editor.BookEdited += OnBookEdited;
+            editor.ScriptsEdited += OnScriptsEdited;
             WaterHeight.Text = (terrain.WaterLevel / 4f).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
             View.Editor = editor;       // without it the view cannot start a drag
             currentNonfixed = editor.Nonfixed;
@@ -270,6 +279,8 @@ namespace U9Editor.App
                 if (keep != null && LinksList.ItemsSource is List<LinkItem> items)
                     LinksList.SelectedItem = items.FirstOrDefault(i => i.Link.Zone == keep.Link.Zone);
             }
+            // camera points make the scenes
+            if (current != null && touched.Any(o => o.Kind == ObjectFileKind.Nonfixed && o.Source.Type == CameraPoint.Type) && sceneTimer == null) ShowScenes();
             View.PruneSelection();
             if (selected != null && selected.Source.Removed) { View.SelectObject(null); }
             else Select(selected);

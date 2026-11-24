@@ -3,6 +3,7 @@
 # cheats on; -Uninstall takes it all out again and puts Options.ini back.
 #
 #   powershell -ExecutionPolicy Bypass -File tools/game-test.ps1 -Map 9 -X 467 -Row 505 [-Height 600] [-Run]
+#   powershell -ExecutionPolicy Bypass -File tools/game-test.ps1 -NoStart -NoFly -NoGod -Run   (a plain new game: its opening scene on Earth)
 #   powershell -ExecutionPolicy Bypass -File tools/game-test.ps1 -Uninstall
 #
 # X and Row are terrain points, as the editor shows them; Height (object units) is optional: without it the
@@ -14,7 +15,7 @@
 # on Britannia and use tppos for other maps.
 param(
     [int]$Map = 9, [double]$X = 467, [double]$Row = 505, [int]$Height = -1,
-    [switch]$NoFly, [switch]$NoGod, [switch]$Run, [switch]$Uninstall,
+    [switch]$NoFly, [switch]$NoGod, [switch]$NoStart, [switch]$Run, [switch]$Uninstall,
     [string]$GameData = "gamedata", [string]$U9gl = "..\u9gl-src\u9gl\out"
 )
 $ErrorActionPreference = 'Stop'
@@ -46,6 +47,7 @@ Copy-Item (Join-Path $out "dsound.dll") $game -Force
 Copy-Item (Join-Path $out "u9gl.ini") (Join-Path $game "u9gl\u9gl.defaults.ini") -Force
 
 $start = "$Map,$([int][Math]::Round($X * 128)),$([int][Math]::Round($Row * 128))" + $(if ($Height -ge 0) { ",$Height" } else { "" })
+if ($NoStart) { $start = "" }     # U9GL ignores an empty start_at: the new game plays its own opening on Earth
 # what U9GL's launcher sets for its OpenGL renderer in its own window, then the test's own keys (later lines win)
 $ini = (Get-Content (Join-Path $out "u9gl.ini") -Raw) + @"
 

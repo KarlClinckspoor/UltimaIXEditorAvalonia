@@ -6,17 +6,71 @@ using U9.Formats.Flx;
 namespace U9.Formats.Triggers
 {
     /// <summary>
-    /// One trigger op: (u16 op, u16 a, u16 b). The op's low byte is the command; its high byte minus 16 is a signed
-    /// offset added to the link number it works on (0x10 = +0, 0x11 = +1, 0x0E = -2).
+    /// One trigger op: (u16 op, u16 a, u16 b). The op's low byte is the command; its high byte's low 5 bits minus 16
+    /// are a signed offset added to the script's current link (0x10 = +0, 0x11 = +1, 0x0E = -2); 0 there means the op
+    /// is not limited to a link. For most commands A's low 13 bits are the object type the op works on (0x1FFF: any
+    /// type) and B its parameter.
+    /// <para>How u9.exe runs a script (its trigger interpreter at 0x54F850 in the GOG exe): the current link starts as
+    /// the triggering object's link and op 0x11 sets it; op 0x2C sets the search range. A handful of commands are done
+    /// by the interpreter itself (0x11, 0x13, 0x14, 0x1F, 0x2C, 0x63 and others); every other command is sent to each
+    /// object of the type and link within the range of the triggering object, as an event its type's usecode handles
+    /// with B as the parameter (0x01 is "activate": a camera point, type 2218, then moves the camera, see
+    /// <see cref="CameraMove"/>).</para>
     /// </summary>
     public readonly struct TriggerOp
     {
-        public const int SetLink = 0x11, ChangeMap = 0x1F, End = 0xFF;
+        public const int Activate = 0x01, SetLink = 0x11, ChangeMap = 0x1F, Range = 0x2C, End = 0xFF;
+        public const int AnyType = 0x1FFF;
         public readonly ushort Op, A, B;
         public TriggerOp(ushort op, ushort a, ushort b) { Op = op; A = a; B = b; }
         public int Command => Op & 0xFF;
         public int LinkOffset => (Op >> 8) - 16;
+        /// <summary>Whether the op only reaches objects with the current link plus <see cref="LinkOffset"/>.</summary>
+        public bool UsesLink => ((Op >> 8) & 0x1F) != 0;
+        /// <summary>The object type the op works on (<see cref="AnyType"/> for any).</summary>
+        public int TargetType => A & 0x1FFF;
+        /// <summary>For op 0x2C: the search range in object units (B x 128, or B &amp; 0x7FFF when its top bit is set; 0x500 when that is 0).</summary>
+        public int RangeUnits
+        {
+            get
+            {
+                if (Command != Range) return 0;
+                int r = (B & 0x8000) != 0 ? B & 0x7FFF : B << 7;
+                return r != 0 ? r : DefaultRange;
+            }
+        }
+        public const int DefaultRange = 0x500;
+        public TriggerOp WithB(int b) => new TriggerOp(Op, A, (ushort)b);
         public override string ToString() => $"{Op:x4}:{A:x},{B:x}";
+    }
+
+    /// <summary>
+    /// The parameter (B) of op 0x01 sent to a camera point (type 2218), as its usecode reads it (u9.exe 0x633410):
+    /// the camera goes to the point's position (its z less 0x40) looking along the point's rotation, at the distance
+    /// in the point's Misc Usecode 1 property (A, object units), over the low 11 bits x 500 ms. 0x8000 glides there
+    /// from where the camera is (eased with a cosine, or straight with 0x0800); without it the camera cuts there and
+    /// waits. 0x4000 glides back to the view the camera had before the scene. When the time is up, 0x2000 runs the
+    /// point's first OO Trigger script and 0x1000 its second; a script that moves the camera on keeps the scene going,
+    /// otherwise the camera returns to the player.
+    /// </summary>
+    public readonly struct CameraMove
+    {
+        public const int Glide = 0x8000, ReturnToPlayer = 0x4000, RunFirst = 0x2000, RunSecond = 0x1000, Linear = 0x0800;
+        public readonly int B;
+        public CameraMove(int b) { B = b & 0xFFFF; }
+        public static CameraMove Make(int halfSeconds, bool glide, bool linear, bool back, bool runFirst, bool runSecond) =>
+            new CameraMove((Math.Clamp(halfSeconds, 0, 0x7FF)) | (glide ? Glide : 0) | (linear ? Linear : 0) | (back ? ReturnToPlayer : 0)
+                           | (runFirst ? RunFirst : 0) | (runSecond ? RunSecond : 0));
+        public int HalfSeconds => B & 0x7FF;
+        public int Milliseconds => HalfSeconds * 500;
+        public bool Glides => (B & Glide) != 0;
+        public bool IsLinear => (B & Linear) != 0;
+        public bool Returns => (B & ReturnToPlayer) != 0;
+        public bool RunsFirst => (B & RunFirst) != 0;
+        public bool RunsSecond => (B & RunSecond) != 0;
+        public override string ToString() =>
+            $"{(Returns ? "back to the player" : Glides ? (IsLinear ? "glide (straight)" : "glide") : "cut")} {Milliseconds / 1000.0:0.#} s"
+            + (RunsFirst ? ", then its first script" : "") + (RunsSecond ? ", then its second script" : "");
     }
 
     /// <summary>
@@ -25,7 +79,9 @@ namespace U9.Formats.Triggers
     /// <list type="bullet">
     /// <item>0x1F change map: B's low byte is the destination map (0 = this map), B's high byte flags (0x01, 0x40,
     /// 0x80; meaning unknown), A the type of the arrival marker (0 = any).</item>
-    /// <item>0x11 set link, before a 0x1F: B (plus the op's offset) is the arrival marker's link. A is unknown.</item>
+    /// <item>0x11 set link: B (plus the op's offset) becomes the current link (before a 0x1F, the arrival marker's link).</item>
+    /// <item>0x2C range: how far from the triggering object the following ops look for their objects (see <see cref="TriggerOp.RangeUnits"/>).</item>
+    /// <item>0x01 activate: sends the objects the "activate" event with B (camera points: <see cref="CameraMove"/>).</item>
     /// </list>
     /// </summary>
     public sealed class TriggerScripts

@@ -59,7 +59,7 @@ strength 20 builds a hill some 45 units high: the default (6) is gentler.
 | `click x y [ctrl\|shift]`, `drag x1 y1 x2 y2`, `move x y` | mouse, in window pixels as a full `shot` shows them (title bar included) |
 | `key <SendKeys>` | `^z` undo, `^y` redo, `^d` copy, `^s` save, `{DEL}`, `{END}` to ground, `{[}` / `{]}` turn, `{PGUP}` / `{PGDN}`, `{ESC}` |
 | `drag x1 y1 x2 y2 ctrl` | box selection: at the `launch` view above, `drag 130 180 340 240 ctrl` selects the row of ten small trees left of the gate (they turn magenta); then `drag 230 212 480 520` moves all ten, `{]}` turns them about their middle, `^d` copies them |
-| `dclick x y` | double click: list items (a link, a found object, a bookmark). The side tabs are at y 306 with nothing selected, y 319 with an object selected (Links 1063, Place 1118, Contents 1188, Find 1255, Terrain 1312); on Find the search box is at 1150,351 (`key "telescope{ENTER}"`), All maps at 1281,351, Go to at 1147,699, the first bookmark at 1100,761. `key "^aplaque nonfixed{ENTER}"`, `dclick 1150 402`, `click 1188 306` shows Sir Dupre's tomb plaque and its book 407 on the Contents tab (text box at 1200,650, Set text at 1066,740) |
+| `dclick x y` | double click: list items (a link, a found object, a bookmark). The side tabs are at y 306 with nothing selected, y 319 with an object selected (Links 1057, Place 1104, Contents 1163, Find 1219, Scenes 1269, Terrain 1327); on Find the search box is at 1150,351 (`key "telescope{ENTER}"`), All maps at 1281,351, Go to at 1147,699, the first bookmark at 1100,761. `key "^aplaque nonfixed{ENTER}"`, `dclick 1150 402`, `click 1163 306` shows Sir Dupre's tomb plaque and its book 407 on the Contents tab (text box at 1200,650, Set text at 1066,740) |
 | `down x y`, `up x y` | press / release the left button there; `move` in between, and `shot` mid-drag (a held terrain brush keeps working: `down 610 720`, `move 615 722`, wait 1.5 s, `shot`, `up 615 722` raises a hill under Moonglow's plants and shows them riding up) |
 | `stop` | kills the editor (no unsaved-changes prompt) |
 
@@ -153,6 +153,25 @@ into them with an explicit z rather than walking. Read the position with `pos` b
 - Without U9GL, the same cheats work from the key map: under `[CHEAT COMMANDS]` in `gamedata/default.kmp`,
   `ctrl+y = toggle_avatar_fly` (checked: he flies through the house wall), `ctrl+u = toggle_avatar_invulnerable`.
 - Always `-Uninstall` afterwards, and put back any `default.kmp` edit: the game folder is the user's copy.
+
+## Scenes
+
+The Scenes tab (at y 306 / 319 like the others, x 1269 with an object selected) lists the map's scenes; on Earth
+(`--map 14`) the opening is the fifth (`click 1200 418` on the first row, then `key "{DOWN}{DOWN}{DOWN}{DOWN}"`).
+Clicking a move (rows 36 px apart from y 620) looks from its camera point; then the Seconds box is at 1122,768
+(`key "^a8{ENTER}"` sets the move), Play at 1057,553. A mouse-free picture of a scene moment:
+
+```powershell
+Start-Process -Wait -FilePath src\U9Editor.App\bin\Debug\net10.0\U9Editor.exe -ArgumentList "--gamedata gamedata --map 14 --size 1400x900 --scene 4 --scene-time 15.9 --screenshot $env:TEMP\u9_scene.png"
+dotnet src/U9Editor.Cli/bin/Debug/net10.0/u9.dll scenes gamedata 14      # the same scenes as text
+```
+
+The game's own opening, captured: `tools/game-test.ps1 -NoStart -NoFly -NoGod -Run` (an empty start_at: no
+teleport), wait 12 s, `game.ps1 tap esc` once (it skips the intro movie; the scene follows at once, and a second Esc
+interrupts it), then capture the desktop every 0.4 s with `System.Drawing.Graphics.CopyFromScreen(0,0,0,0,1280x960)`:
+U9GL's Ctrl+P writes nothing while the scene plays, but desktop captures of the game window work here. The scene
+fades in about 1 s after the Esc and ends about 16 s later. `u9 camera-point ...` edits `runtime/nonfixed.14`,
+which a new game reads: back it up first and put it back (and delete the `.orig`) afterwards.
 
 ## Models and Blender
 

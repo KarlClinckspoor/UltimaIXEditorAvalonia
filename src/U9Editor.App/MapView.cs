@@ -288,6 +288,19 @@ namespace U9Editor.App
             Redraw();
         }
 
+        /// <summary>Hides objects' models and markers (or shows them again where they are), e.g. camera points while a scene plays.</summary>
+        public void HideObjects(IEnumerable<SceneObject> list, bool hide)
+        {
+            foreach (var o in list)
+            {
+                if (o.Source.Removed) continue;
+                renderer.UpdateMarker(o.Id, hide ? new Vector3(-100000, -100000, -100000) : o.World);
+                if (models != null && models.SlotOf(o.Id) >= 0)
+                    renderer.UpdateInstance(models.SlotOf(o.Id), hide ? Matrix4x4.CreateScale(0) : ModelScene.Placement(o.Source, space), o.Id);
+            }
+            Redraw();
+        }
+
         /// <summary>Draws an object at a position it does not have yet (object units across the map), as a drag shows it.</summary>
         public void Preview(SceneObject o, float mapX, float mapY, float z, Quaternion rotation)
         {

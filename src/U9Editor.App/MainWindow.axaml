@@ -94,6 +94,15 @@
           <TextBlock x:Name="ObjectDetails" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
         </StackPanel>
         <TabControl x:Name="SideTabs" Padding="0,4,0,0">
+          <TabControl.Styles>
+            <Style Selector="TabItem">
+              <Setter Property="Padding" Value="7,0" />
+              <Setter Property="MinWidth" Value="0" />
+            </Style>
+          </TabControl.Styles>
+          <TabControl.ItemsPanel>
+            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+          </TabControl.ItemsPanel>
           <TabItem Header="Links" FontSize="13" ToolTip.Tip="Map links: doors, caves and teleports to other maps">
             <DockPanel>
               <TextBlock x:Name="LinksHeader" DockPanel.Dock="Top" Text="Map links" FontWeight="SemiBold" Margin="0,0,0,2" />
@@ -193,6 +202,43 @@
                 </StackPanel>
               </StackPanel>
               <ListBox x:Name="FindResults" FontSize="12" DoubleTapped="OnFindGo" />
+            </DockPanel>
+          </TabItem>
+          <TabItem Header="Scenes" FontSize="13" ToolTip.Tip="In-engine scenes: camera moves between camera points (type 2218) that trigger scripts chain">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Top" Spacing="4">
+                <TextBlock x:Name="ScenesHeader" Text="Scenes" FontWeight="SemiBold" />
+                <TextBlock Opacity="0.6" FontSize="11" TextWrapping="Wrap"
+                           Text="Each scene is the camera moves one object's script starts. Click a scene to see where it starts, Play to watch it in the view; click a move to look from its camera point." />
+                <ListBox x:Name="ScenesList" FontSize="12" Height="110" SelectionChanged="OnSceneSelected" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Button x:Name="ScenePlay" Content="Play" Click="OnScenePlay" ToolTip.Tip="Plays the scene in the 3D view (camera points hidden). Again: stop and put the view back." />
+                  <Slider x:Name="SceneTime" Width="190" Minimum="0" Maximum="1" ValueChanged="OnSceneScrub" ToolTip.Tip="Drag through the scene" />
+                  <TextBlock x:Name="SceneClock" VerticalAlignment="Center" FontSize="12" />
+                </StackPanel>
+                <TextBlock Text="Moves" FontWeight="SemiBold" Margin="0,4,0,0" />
+              </StackPanel>
+              <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,6,0,0" x:Name="ShotEdit" IsEnabled="False">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Seconds" VerticalAlignment="Center" FontSize="12" />
+                  <TextBox x:Name="ShotSeconds" Width="60" FontSize="12" KeyDown="OnShotKey" ToolTip.Tip="How long the move takes, in half seconds (0 to 1023.5)" />
+                  <CheckBox x:Name="ShotGlide" Content="Glide" FontSize="12" ToolTip.Tip="Glide there from where the camera is (B 0x8000); off: cut there and wait" />
+                  <CheckBox x:Name="ShotStraight" Content="Straight" FontSize="12" ToolTip.Tip="Glide at an even speed (0x0800); off: ease in and out" />
+                  <CheckBox x:Name="ShotBack" Content="Back" FontSize="12" ToolTip.Tip="Glide back to the view the camera had before the scene (0x4000)" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Then run the point's" VerticalAlignment="Center" FontSize="12" />
+                  <CheckBox x:Name="ShotThen1" Content="script 1" FontSize="12" ToolTip.Tip="When the time is up, run the point's first OO Trigger script (0x2000)" />
+                  <CheckBox x:Name="ShotThen2" Content="script 2" FontSize="12" ToolTip.Tip="When the time is up, run the point's second OO Trigger script (0x1000)" />
+                </StackPanel>
+                <WrapPanel>
+                  <Button Content="Set move" Click="OnShotSet" FontSize="12" Margin="0,0,4,4" ToolTip.Tip="Writes the move into its trigger script (one undo step; Ctrl+S saves TRIGGERS.FLX, first time keeping .orig). Every object running that script changes." />
+                  <Button Content="Point from view" Click="OnShotFromView" FontSize="12" Margin="0,0,4,4" ToolTip.Tip="Moves the move's camera point to where the view is: the point looked at, heading, pitch and distance (one undo step)" />
+                  <Button Content="Look from point" Click="OnShotLook" FontSize="12" Margin="0,0,4,4" ToolTip.Tip="Puts the view where the camera is at the end of this move" />
+                </WrapPanel>
+                <TextBlock x:Name="ShotInfo" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+              </StackPanel>
+              <ListBox x:Name="ShotsList" FontSize="12" SelectionChanged="OnShotSelected" />
             </DockPanel>
           </TabItem>
           <TabItem Header="Terrain" FontSize="13">

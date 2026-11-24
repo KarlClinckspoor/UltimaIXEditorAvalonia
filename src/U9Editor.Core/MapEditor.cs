@@ -216,7 +216,7 @@ namespace U9Editor.Core
             if (s.Water is { } wu) { SetWater(wu.Before); terrainVersion--; }
             if (s.Book is { } bu) PutBook(bu.Number, bu.Before);
             // scripts first: listeners of Changed rebuild the link list from them
-            if (s.Scripts != null) { foreach (var sc in Enumerable.Reverse(s.Scripts)) Scripts.Set(sc.Slot, sc.Before); scriptVersion--; }
+            if (s.Scripts != null) { foreach (var sc in Enumerable.Reverse(s.Scripts)) Scripts.Set(sc.Slot, sc.Before); scriptVersion--; RaiseScriptsEdited(); }
             if (s.Map != null)
             {
                 s.Map.Undo(s.Edit);
@@ -233,7 +233,7 @@ namespace U9Editor.Core
             if (redo.Count == 0) return null;
             var s = redo[^1];
             redo.RemoveAt(redo.Count - 1);
-            if (s.Scripts != null) { foreach (var sc in s.Scripts) Scripts.Set(sc.Slot, sc.After); scriptVersion++; }
+            if (s.Scripts != null) { foreach (var sc in s.Scripts) Scripts.Set(sc.Slot, sc.After); scriptVersion++; RaiseScriptsEdited(); }
             if (s.Map != null)
             {
                 s.Map.Redo(s.Edit);

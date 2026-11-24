@@ -27,6 +27,9 @@ namespace U9Editor.Cli
                     case "model-export" when args.Length >= 4: return ModelExport(args);
                     case "model-info" when args.Length == 2: return ModelInfo(args[1]);
                     case "model-import" when args.Length == 4: return ModelImport(args[1], int.Parse(args[2]), args[3]);
+                    case "camera-point" when args.Length >= 9: return CameraPointSet(args);
+                    case "scenes" when args.Length == 3: return Scenes(args[1], int.Parse(args[2]));
+                    case "objects" when args.Length >= 3: return Objects(args[1], int.Parse(args[2]), args.Skip(3).ToArray());
                     default: return Usage();
                 }
             }
@@ -53,7 +56,17 @@ namespace U9Editor.Cli
   u9 model-info <file.glb>                   what the editor reads from a .glb: triangles per texture, size
   u9 model-import <gamedata> <sappear record> <in.glb>
                                              replace a model with a .glb's triangles (static/sappear.flx; the first
-                                             time the original is kept as sappear.flx.orig)");
+                                             time the original is kept as sappear.flx.orig)
+  u9 objects <gamedata> <map> [fixed|nonfixed] [--type n] [--props]
+                                             list a map's objects: file, type, name, point x / row, z, link, model,
+                                             and with --props their property segments
+  u9 scenes <gamedata> <map>                 the map's in-engine scenes: camera points (type 2218) and the moves
+                                             the trigger scripts chain between them
+  u9 camera-point <gamedata> <map> <link> <x> <row> <z> <heading> <pitch> [distance]
+                                             put a camera point (type 2218, by link) where a camera should be: the
+                                             point looked at (point x, row; z in object units), heading clockwise
+                                             from north, pitch down, distance in object units; writes
+                                             runtime/nonfixed.N (first time keeping .orig)");
             return 2;
         }
 
@@ -103,6 +116,91 @@ namespace U9Editor.Cli
             Console.WriteLine($"  box ({all.Min(p => p.X):0.#}, {all.Min(p => p.Y):0.#}, {all.Min(p => p.Z):0.#}) to ({all.Max(p => p.X):0.#}, {all.Max(p => p.Y):0.#}, {all.Max(p => p.Z):0.#}) object units");
             foreach (var grp in tris.GroupBy(t => (t.Texture, t.Frame, t.Flags)).OrderBy(x => x.Key.Texture))
                 Console.WriteLine($"  texture {grp.Key.Texture} frame {grp.Key.Frame} flags 0x{grp.Key.Flags:X}: {grp.Count()} triangles");
+            return 0;
+        }
+
+        static int Objects(string gamedata, int map, string[] opts)
+        {
+            var game = GameFolder.TryOpen(gamedata) ?? throw new IOException("not a game folder: " + gamedata);
+            bool props = opts.Contains("--props");
+            int type = -1;
+            int ti = Array.IndexOf(opts, "--type");
+            if (ti >= 0 && ti + 1 < opts.Length) type = int.Parse(opts[ti + 1]);
+            var kinds = new List<U9.Formats.Objects.ObjectFileKind>();
+            if (!opts.Contains("nonfixed")) kinds.Add(U9.Formats.Objects.ObjectFileKind.Fixed);
+            if (!opts.Contains("fixed")) kinds.Add(U9.Formats.Objects.ObjectFileKind.Nonfixed);
+            string typenames = Directory.EnumerateFiles(game.StaticFolder, "typename.flx", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault();
+            var names = typenames != null ? U9.Formats.Objects.TypeNames.Load(typenames) : null;
+            foreach (var kind in kinds)
+            {
+                bool fixd = kind == U9.Formats.Objects.ObjectFileKind.Fixed;
+                string folder = fixd ? game.StaticFolder : Path.Combine(game.Root, "runtime");
+                string file = Directory.EnumerateFiles(folder, (fixd ? "fixed." : "nonfixed.") + map, new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault();
+                if (file == null) continue;
+                var m = U9.Formats.Objects.ObjectMap.Load(file, kind);
+                foreach (var o in m.Objects)
+                {
+                    if (o.Removed || (type >= 0 && o.Type != type)) continue;
+                    string line = $"{(fixd ? "fixed" : "nonfixed")} @{o.FileOffset:X6} type {o.Type,5} at {o.PointX,8:F2} {o.PointRow,8:F2} z {o.Z,5}";
+                    if (!fixd) line += $" link {o.Link,5} model {o.Model,5}";
+                    var q = o.Rotation;
+                    if (q.W < 0.99999f) line += $" rot ({q.X:0.###}, {q.Y:0.###}, {q.Z:0.###}, {q.W:0.###})";
+                    string n = names?[o.Type];
+                    if (n != null) line += "  " + n;
+                    Console.WriteLine(line);
+                    if (props && !fixd && o.PropertyOffset != 0)
+                        foreach (var p in m.PropertiesOf(o))
+                            Console.WriteLine($"      {p}");
+                }
+            }
+            return 0;
+        }
+
+        static int CameraPointSet(string[] a)
+        {
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            var game = GameFolder.TryOpen(a[1]) ?? throw new IOException("not a game folder: " + a[1]);
+            int map = int.Parse(a[2]), link = int.Parse(a[3]);
+            double x = double.Parse(a[4], ci), row = double.Parse(a[5], ci);
+            int z = int.Parse(a[6]);
+            float heading = float.Parse(a[7], ci), pitch = float.Parse(a[8], ci);
+            int distance = a.Length > 9 ? int.Parse(a[9]) : -1;
+            string file = Directory.EnumerateFiles(Path.Combine(game.Root, "runtime"), "nonfixed." + map, new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault()
+                          ?? throw new IOException($"map {map} has no nonfixed file");
+            var m = U9.Formats.Objects.ObjectMap.Load(file, U9.Formats.Objects.ObjectFileKind.Nonfixed);
+            var points = m.Objects.Where(o => !o.Removed && o.Type == CameraPoint.Type && o.Link == link).ToList();
+            if (points.Count == 0) { Console.Error.WriteLine($"no camera point with link {link} on map {map}"); return 1; }
+            foreach (var o in points)
+            {
+                o.MoveTo((int)Math.Round(x * 128), (int)Math.Round(row * 128), z + CameraPoint.PivotDrop);
+                o.SetRotation(CameraPoint.RotationFor(heading, pitch));
+                var d = m.PropertiesOf(o).FirstOrDefault(p => p.Id == U9.Formats.Objects.PropertySegment.MiscUsecode1);
+                if (distance >= 0 && d != null) m.SetProperty(o, d, distance, d.B);
+                Console.WriteLine($"camera point {link}: {new CameraPoint(o, new MapSpace(1024, 1024)).Pose}");
+            }
+            if (!File.Exists(file + ".orig")) File.Copy(file, file + ".orig");
+            m.Save(file);
+            return 0;
+        }
+
+        static int Scenes(string gamedata, int map)
+        {
+            var game = GameFolder.TryOpen(gamedata) ?? throw new IOException("not a game folder: " + gamedata);
+            var opt = new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive };
+            string file = Directory.EnumerateFiles(Path.Combine(game.Root, "runtime"), "nonfixed." + map, opt).FirstOrDefault()
+                          ?? throw new IOException($"map {map} has no nonfixed file");
+            var nonfixed = U9.Formats.Objects.ObjectMap.Load(file, U9.Formats.Objects.ObjectFileKind.Nonfixed);
+            var scripts = U9.Formats.Triggers.TriggerScripts.Load(Directory.EnumerateFiles(game.StaticFolder, "triggers.flx", opt).First());
+            var entry = game.Maps().FirstOrDefault(m => m.Number == map);
+            var space = new MapSpace(entry?.Width ?? 1024, entry?.Height ?? 1024);
+            var paths = Cutscenes.Find(nonfixed, scripts, space);
+            Console.WriteLine($"map {map}: {nonfixed.Objects.Count(o => o.Type == CameraPoint.Type)} camera points, {paths.Count} scenes");
+            foreach (var p in paths)
+            {
+                Console.WriteLine(p);
+                foreach (var s in p.Shots)
+                    Console.WriteLine($"   {s}   {s.Point.Pose}   (script {s.Slot} op {s.OpIndex}{(s.Also.Length > 0 ? "; also " + s.Also : "")})");
+            }
             return 0;
         }
 
