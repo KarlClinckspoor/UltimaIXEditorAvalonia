@@ -95,11 +95,31 @@ powershell -ExecutionPolicy Bypass -File tools/game-test.ps1 -Map 9 -X 467 -Row 
 powershell -ExecutionPolicy Bypass -File tools/game-test.ps1 -Uninstall
 ```
 
-- The game draws in U9GL's own 1280 x 960 window at 0,0. Desktop captures of it come out white or black: press
-  **Ctrl+P** in the game (U9GL saves `gamedata/u9-<n>-after.png`; move it out of the game folder afterwards).
-- Keys reach the game with `keybd_event` (scan codes from `MapVirtualKey`); hold Ctrl down around the key for
-  combinations. The game draws its own mouse cursor, so `SetCursorPos` clicks miss: use keys (Enter accepts the
-  quit dialog after Ctrl+X).
+Drive the running game with `.claude/skills/run-u9editor/game.ps1`:
+
+```powershell
+$g = ".claude/skills/run-u9editor/game.ps1"
+powershell -ExecutionPolicy Bypass -File $g tap esc          # three times, 2 s apart: the intro, then a new game starts
+powershell -ExecutionPolicy Bypass -File $g shot             # Ctrl+P in the game -> prints %TEMP%\u9game-<n>.png
+powershell -ExecutionPolicy Bypass -File $g hold up 2500     # walk forward 2.5 s
+powershell -ExecutionPolicy Bypass -File $g tap ctrl+backquote p o s enter     # U9GL console: where am I?
+powershell -ExecutionPolicy Bypass -File $g tap t p p o s space 9 space 7 3 3 4 3 space 3 3 6 0 0 space 2 1 6 0 enter
+powershell -ExecutionPolicy Bypass -File $g log 15           # console output is in the log as "CONSOLE ..." lines
+```
+
+Checked that way: a link made with the editor (the cave at 573, 262.4 on Britannia retargeted to a new arrival
+at the bridge, saved) works in the game. `tppos` into the zone sent the Avatar to the arrival, 59779,64640 for
+59776,64640. Zones can sit well below the ground you see (that one at z 2137 under ground at 2710): teleport
+into them with an explicit z rather than walking. Read the position with `pos` before and after.
+
+- The game draws in U9GL's own 1280 x 960 window at 0,0. Desktop captures of it come out white or black: use
+  `game.ps1 shot` (Ctrl+P; U9GL saves `gamedata/u9-<n>-after.png`, which the driver moves to `%TEMP%`).
+- Keys reach the game with `keybd_event` and scan codes from `MapVirtualKey` (arrows need the extended flag);
+  `game.ps1` does that. The game draws its own mouse cursor, so mouse clicks miss: use keys (`game.ps1 quit` is
+  Ctrl+X, then Enter on the dialog).
+- The console stays open after a command; a teleport closes it. Typing goes to the console while it is open.
+- A new game copies `runtime/nonfixed.N`: back up the files the editor saves (and delete their `.orig`) to put
+  the game folder back afterwards.
 - When another window takes the focus the game minimises and U9GL hides its window: `ShowWindow(game, 9)` and
   `SetForegroundWindow` bring both back.
 - Without U9GL, the same cheats work from the key map: under `[CHEAT COMMANDS]` in `gamedata/default.kmp`,
