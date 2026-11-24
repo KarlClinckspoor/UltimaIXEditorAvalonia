@@ -378,17 +378,22 @@ namespace U9.Formats.Objects
             return rec;
         }
 
-        /// <summary>Room for <paramref name="size"/> bytes in one of the chunk's pages (a new page if none has it); returns the file offset.</summary>
+        /// <summary>
+        /// Room for <paramref name="size"/> bytes in one of the chunk's pages (a new page if none has it); returns the file offset.
+        /// <para>A page's +0x04 is not a dependable end of its data: in the shipped fixed files it points inside or before
+        /// the live records in about a third of the pages, and nonfixed pages hold records that no list reaches (contained
+        /// items). So new bytes go only above +0x04, every live record and segment, and the page's last non-zero byte.</para>
+        /// </summary>
         int Allocate(int chunk, int size)
         {
             foreach (int page in chunkPages[chunk])
             {
                 int ph = DataStart + page;
-                uint free = U32(ph + 4);
-                if (free >= page + PageHeader && free + size <= page + PageSize)
+                int top = Top(page);
+                if (top + size <= page + PageSize)
                 {
-                    PutU32(ph + 4, (uint)(free + size));
-                    return DataStart + (int)free;
+                    PutU32(ph + 4, (uint)(top + size));
+                    return DataStart + top;
                 }
             }
             int fresh = AddPage(chunk);
@@ -427,6 +432,25 @@ namespace U9.Formats.Objects
             return page;
         }
 
+        /// <summary>The lowest page-relative offset (from the data start) from which a page is surely unused.</summary>
+        int Top(int page)
+        {
+            int ph = DataStart + page;
+            int top = Math.Max(page + PageHeader, (int)Math.Min(U32(ph + 4), (uint)(page + PageSize)));
+            int end = ph + PageSize;
+            if (end > Data.Length) end = Data.Length;
+            for (int i = end - 1; i >= ph + PageHeader; i--)
+                if (Data[i] != 0) { top = Math.Max(top, i + 1 - DataStart); break; }
+            foreach (var o in Objects)
+            {
+                int rel = o.FileOffset - DataStart;
+                if (rel >= page && rel < page + PageSize) top = Math.Max(top, rel + RecordSize);
+                int p = o.PropertyOffset;
+                if (Kind == ObjectFileKind.Nonfixed && p >= page && p < page + PageSize) top = Math.Max(top, p + 16);
+            }
+            return (top + 7) & ~7;
+        }
+
         bool InUse(int page)
         {
             foreach (var l in chunkPages) if (l.Contains(page)) return true;
@@ -463,18 +487,27 @@ namespace U9.Formats.Objects
                 if (p != 0 && DataStart + p + 16 <= Data.Length) CountProperties(DataStart + p, -1);
                 return;
             }
-            int free = (int)U32(ph + 4), last = free - RecordSize;
-            if (last == rel) { PutU32(ph + 4, (uint)last); return; }
-            if (last < page + PageHeader || !byOffset.TryGetValue(DataStart + last, out var tail) || tail.Removed) return;
-            int slot = LinkSlot(tail);
-            if (slot < 0) return;
+            // fixed pages are packed: the page's last live record moves into the hole (its +0x04 is not trusted for that)
+            int free = (int)U32(ph + 4);
+            MapObject tail = null;
+            foreach (var x in Objects)
+                if (x != o && !x.Removed && x.FileOffset > rec && x.FileOffset < ph + PageSize && (tail == null || x.FileOffset > tail.FileOffset)) tail = x;
+            int slot = tail != null ? LinkSlot(tail) : -1;
+            if (tail == null || slot < 0)
+            {
+                Put(rec, new byte[RecordSize]);
+                if (free == rel + RecordSize) PutU32(ph + 4, (uint)rel);
+                return;
+            }
+            int last = tail.FileOffset - DataStart;
             Touch(tail);
-            Put(rec, Data.AsSpan(DataStart + last, RecordSize).ToArray());
+            Put(rec, Data.AsSpan(tail.FileOffset, RecordSize).ToArray());
+            Put(tail.FileOffset, new byte[RecordSize]);
             PutU32(slot, (uint)rel);
             byOffset.Remove(tail.FileOffset);
             tail.FileOffset = rec;
             byOffset[rec] = tail;
-            PutU32(ph + 4, (uint)last);
+            if (free == last + RecordSize) PutU32(ph + 4, (uint)last);
         }
 
         /// <summary>The file offset of the u32 that points at the object (a list head or the previous record), or -1.</summary>
