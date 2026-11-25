@@ -13,9 +13,15 @@
     <PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="$(AvaloniaVersion)" />
+    <!-- the trigger script editor: AvaloniaEdit (MIT), the Avalonia port of AvalonEdit; 12.0.0 is the line for Avalonia 12 -->
+    <PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../U9Editor.Core/U9Editor.Core.csproj" />
     <ProjectReference Include="../U9Editor.Render/U9Editor.Render.csproj" />
+    <ProjectReference Include="../U9.Mods/U9.Mods.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../../names/trigger-names.txt" Link="names/trigger-names.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

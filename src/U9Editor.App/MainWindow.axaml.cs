@@ -83,6 +83,8 @@ namespace U9Editor.App
             View.SelectionChanged += () => { if (View.Selection.Count > 1) Select(selected); };
             View.FollowTerrain = true;
             View.PlaceAt += OnPlaceAt;
+            View.PasteAt += OnPasteAt;
+            RefreshPrefabList();
             ApplyTheme(Program.ThemeAtStart ?? settings.Theme, remember: Program.ThemeAtStart == null);
             View.ModeChanged += ShowMode;
             View.FlyChanged += ShowCamera;
@@ -127,6 +129,7 @@ namespace U9Editor.App
                 SceneTime.Value = Program.SceneTimeAtStart;
                 OnSceneScrub(null, null);      // shows that moment, camera points hidden (also at 0, where the slider does not change)
             }
+            PrefabsAtStart();
             View.Redraw();
         }
 
@@ -155,6 +158,7 @@ namespace U9Editor.App
             typeNames = namesPath != null ? TypeNames.Load(namesPath) : null;
             string trigPath = Directory.EnumerateFiles(g.StaticFolder, "triggers.flx", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }).FirstOrDefault();
             triggerScripts = trigPath != null ? TriggerScripts.Load(trigPath) : null;
+            LoadTriggerNames();
             // the editors' own copies come first, so links see unsaved edits in other maps
             mapLinks = triggerScripts != null ? new MapLinks(triggerScripts, n => editors.TryGetValue(n, out var ed) ? ed.Nonfixed : LoadObjectFile("runtime", "nonfixed", n, ObjectFileKind.Nonfixed)) : null;
             allTypes = new List<TypeItem>();
@@ -241,7 +245,7 @@ namespace U9Editor.App
 
         SceneObjects LoadObjects(int number, MapSpace space, TerrainRaster raster)
         {
-            if (editor != null) { editor.Changed -= OnObjectsChanged; editor.TerrainEdited -= OnTerrainEdited; editor.WaterEdited -= OnWaterEdited; editor.BookEdited -= OnBookEdited; editor.ScriptsEdited -= OnScriptsEdited; }
+            if (editor != null) { editor.Changed -= OnObjectsChanged; editor.TerrainEdited -= OnTerrainEdited; editor.WaterEdited -= OnWaterEdited; editor.BookEdited -= OnBookEdited; editor.ScriptsEdited -= OnScriptsEdited; editor.TypeEdited -= OnTypeEdited; }
             // a map with edits keeps them while other maps are looked at
             if (editors.TryGetValue(number, out var kept))
             {
@@ -265,6 +269,7 @@ namespace U9Editor.App
             editor.WaterEdited += OnWaterEdited;
             editor.BookEdited += OnBookEdited;
             editor.ScriptsEdited += OnScriptsEdited;
+            editor.TypeEdited += OnTypeEdited;
             WaterHeight.Text = (terrain.WaterLevel / 4f).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
             View.Editor = editor;       // without it the view cannot start a drag
             currentNonfixed = editor.Nonfixed;
@@ -485,6 +490,20 @@ namespace U9Editor.App
 
         void OnClosing(object sender, WindowClosingEventArgs e)
         {
+            if (!closeAnyway && DialogueUnsaved)
+            {
+                e.Cancel = true;
+                dialogueWindow.Activate();
+                StatusText.Text = "The dialogue window has unsaved changes: save or close it first.";
+                return;
+            }
+            if (!closeAnyway && CombatUnsaved)
+            {
+                e.Cancel = true;
+                combatWindow.Activate();
+                StatusText.Text = "The combat balance window has unsaved changes: save or close it first.";
+                return;
+            }
             if (!closeAnyway && editors.Values.Any(x => x.HasChanges))
             {
                 e.Cancel = true;
@@ -574,6 +593,8 @@ namespace U9Editor.App
             propOwner = o;
             PropOwnerButton.IsVisible = o != null && propTarget != o.Source;
             PropEdit.IsEnabled = false;
+            PropHelpText.Text = "";
+            ShowTypeAndAddRow(o);
             if (o == null || editor == null || o.Kind != ObjectFileKind.Nonfixed)
             {
                 PropHeader.Text = o == null ? "Select a nonfixed object to see its properties and what is inside it." : "Fixed objects (scenery) have no properties.";
@@ -620,6 +641,7 @@ namespace U9Editor.App
             if (PropList.SelectedItem is not PropItem pi) { PropEdit.IsEnabled = false; return; }
             bool editable = pi.Property.Id != PropertyNames.Contents;
             PropEdit.IsEnabled = editable;
+            PropHelpText.Text = PropertyHelp.Of(pi.Property.Id);
             PropA.Text = pi.Property.A.ToString();
             PropB.Text = pi.Property.B.ToString();
         }
@@ -1052,10 +1074,13 @@ namespace U9Editor.App
         {
             GlText.Text = (View.GlError != null ? "GL error: " + View.GlError + "   " : "") + $"{View.LastFrameMs:F1} ms";
             ToolTip.SetTip(GlText, View.GlInfo);
+            if (Program.ScriptsAtStart >= 0 && terrain != null && !scriptsAtStartDone) { scriptsAtStartDone = true; ScriptsAtStart(); }
+            if (Program.CombatAtStart != null && game != null && !combatAtStartDone) { combatAtStartDone = true; CombatAtStart(); }
+            if (Program.DialogueAtStart && game != null && !dialogueAtStartDone) { dialogueAtStartDone = true; DialogueAtStart(); }
             if (Program.WindowShotPath != null && !screenshotTaken && terrain != null)
             {
                 screenshotTaken = true;
-                View.TakePicture((w, h, px) => Dispatcher.UIThread.Post(() => { SaveWindowShot(Program.WindowShotPath, w, h, px); Close(); }, DispatcherPriority.Background));
+                View.TakePicture((w, h, px) => Dispatcher.UIThread.Post(() => { SaveWindowShot(Program.WindowShotPath, w, h, px); closeAnyway = true; Close(); }, DispatcherPriority.Background));
             }
             if (Program.ScreenshotPath != null && !screenshotTaken && terrain != null)
             {
@@ -1064,6 +1089,7 @@ namespace U9Editor.App
                 View.TakePicture((w, h, px) =>
                 {
                     SavePng(Program.ScreenshotPath, w, h, px);
+                    closeAnyway = true;
                     Close();
                 });
             }
@@ -1092,6 +1118,11 @@ namespace U9Editor.App
                     case Key.Y: OnRedo(null, null); return true;
                     case Key.S: OnSave(null, null); return true;
                     case Key.D: OnDuplicate(null, null); return true;
+                    case Key.C: OnPrefabCopy(null, null); return true;
+                    case Key.V: OnPrefabPaste(null, null); return true;
+                    case Key.T: OpenScriptEditor(); return true;
+                    case Key.B: OpenCombat(); return true;
+                    case Key.G: OpenDialogue(); return true;
                 }
                 return false;
             }
@@ -1102,7 +1133,8 @@ namespace U9Editor.App
                     OnBrushToggle(null, null);
                     return true;
                 case Key.Escape:
-                    if (View.Brush != null) { BrushToggle.IsChecked = false; OnBrushToggle(null, null); }
+                    if (View.Paste != null) StopPasting();
+                    else if (View.Brush != null) { BrushToggle.IsChecked = false; OnBrushToggle(null, null); }
                     else if (View.Placing) { View.Placing = false; StatusText.Text = "Placing stopped."; }
                     else if (View.IsDraggingObject) { View.CancelDrag(); StatusText.Text = "Put back."; }
                     else View.SelectObject(null);
@@ -1115,6 +1147,8 @@ namespace U9Editor.App
                 case Key.V: View.SetFlying(!View.Flying); return true;
                 case Key.Delete: OnDelete(null, null); return true;
                 case Key.End: OnDropToGround(null, null); return true;
+                case Key.OemOpenBrackets when View.Paste != null: TurnPaste(+1); return true;
+                case Key.OemCloseBrackets when View.Paste != null: TurnPaste(-1); return true;
                 case Key.OemOpenBrackets when View.Brush != null: BrushRadius.Value = Math.Max(BrushRadius.Minimum, BrushRadius.Value / 1.25); return true;
                 case Key.OemCloseBrackets when View.Brush != null: BrushRadius.Value = Math.Min(BrushRadius.Maximum, BrushRadius.Value * 1.25); return true;
                 case Key.OemOpenBrackets: OnTurnLeft(null, null); return true;

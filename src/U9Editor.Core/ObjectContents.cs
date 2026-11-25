@@ -41,6 +41,22 @@ namespace U9Editor.Core
             });
         }
 
+        /// <summary>Gives <paramref name="target"/> (the owner's record or one inside it) a new property; one undo step.</summary>
+        public void AddProperty(SceneObject owner, MapObject target, int id, int a, int b)
+        {
+            if (owner == null || target == null) throw new ArgumentNullException(nameof(target));
+            var map = owner.Source.Map;
+            Apply(map, $"add {PropertyNames.NameOf(id)}", () => { map.AddProperty(target, id, a, b); return 0; });
+        }
+
+        /// <summary>Takes a property off <paramref name="target"/>; one undo step.</summary>
+        public void RemoveProperty(SceneObject owner, MapObject target, ObjectProperty p)
+        {
+            if (owner == null || target == null || p == null) throw new ArgumentNullException(nameof(p));
+            var map = owner.Source.Map;
+            Apply(map, $"remove {p.Name}", () => { map.RemoveProperty(target, p); return 0; });
+        }
+
         /// <summary>Replaces a book's title and text; one undo step (saved into the books file with the maps).</summary>
         public void SetBook(int number, string title, string text)
         {

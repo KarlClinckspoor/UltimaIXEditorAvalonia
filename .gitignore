@@ -10,4 +10,4 @@ out/
 .claude/settings.local.json
 
 # raw decompiler output stays local (game code)
-analysis/*decomp*
+analysis/

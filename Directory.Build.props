@@ -6,6 +6,6 @@
     <AvaloniaVersion>12.1.4</AvaloniaVersion>
     <SilkVersion>2.23.0</SilkVersion>
     <!-- The editor's version. Raise the last number with every change to the app. -->
-    <Version>0.0.1</Version>
+    <Version>0.0.6</Version>
   </PropertyGroup>
 </Project>

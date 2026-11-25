@@ -1,0 +1,7 @@
+# Names for the trigger language (docs/trigger-language.md) that the game's own type names leave out.
+# One entry a line: class <number> <PascalCase>, global <number> <UPPER_SNAKE>,
+# flag <B bit> <UPPER_SNAKE>, label <script> <number> <lower_snake>. The user's own names file wins over this one.
+
+class 1111 TrgZones         # trigger zones: run their OO trigger script when the Avatar walks in
+class 1134 Markers          # arrival and destination markers (change_map, moves to markers)
+class 2218 CameraPoints     # camera points of in-engine scenes

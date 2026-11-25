@@ -220,6 +220,34 @@ namespace U9Editor.App
         }
         public event Action<TerrainHit> PlaceAt;
 
+        // ---- pasting a prefab: its footprint follows the mouse, a click pastes it there
+
+        (int W, int H, int Margin, int North)? paste;
+        int pasteX, pasteRow, hoverPointX = -1, hoverPointRow = -1;
+        /// <summary>A prefab's footprint (points) while pasting: it follows the mouse and a click raises <see cref="PasteAt"/>; null stops.</summary>
+        public (int W, int H, int Margin, int North)? Paste
+        {
+            get => paste;
+            set { paste = value; UpdatePasteRegion(); }
+        }
+        /// <summary>A click while pasting: the first point (x, row) the prefab's patch goes to.</summary>
+        public event Action<int, int> PasteAt;
+
+        /// <summary>Puts the paste outline's middle on a point, as if the mouse were there.</summary>
+        public void ShowPasteAt(int x, int row) { hoverPointX = x; hoverPointRow = row; UpdatePasteRegion(); }
+
+        void UpdatePasteRegion()
+        {
+            if (paste is not { } p || hoverPointX < 0) { State.RegionX1 = -1; State.RegionX0 = 0; Redraw(); return; }
+            pasteX = hoverPointX - (p.W - 1) / 2;
+            pasteRow = hoverPointRow - (p.H - 1) / 2;
+            State.RegionX0 = pasteX; State.RegionRow0 = pasteRow;
+            State.RegionX1 = pasteX + p.W - 1; State.RegionRow1 = pasteRow + p.H - 1;
+            State.RegionMargin = p.Margin;
+            State.RegionNorth = p.North & 3;
+            Redraw();
+        }
+
         // ---- terrain brush
 
         TerrainBrush brush;
@@ -636,6 +664,7 @@ namespace U9Editor.App
             boxing = false;
             if (leftDown && !panning && brush != null) StartStroke(pressAt);
             else if (leftDown && !panning && !Placing && (e.KeyModifiers & KeyModifiers.Control) != 0) boxing = true;
+            else if (leftDown && !panning && paste != null) { }        // a click pastes; a drag orbits
             else if (leftDown && !panning && mode == ViewMode.Move) StartObjectDrag(pressAt);
             else if (leftDown && !panning && mode == ViewMode.Rotate) { StartObjectDrag(pressAt); rotating = dragObject != null; }
             e.Pointer.Capture(this);
@@ -681,6 +710,13 @@ namespace U9Editor.App
                 State.BrushRadius = hit.Hit ? brush.Radius : 0;
                 if (hit.Hit) { State.BrushX = hit.World.X; State.BrushRow = space.Row(hit.World.Z); }
                 Redraw();
+                Hovered?.Invoke(hit);
+                return;
+            }
+            if (paste != null)
+            {
+                hoverPointX = hit.Hit ? hit.X : -1; hoverPointRow = hit.Hit ? hit.Row : -1;
+                if (hit.Hit) UpdatePasteRegion();
                 Hovered?.Invoke(hit);
                 return;
             }
@@ -745,6 +781,12 @@ namespace U9Editor.App
             {
                 if (droppedGroup != null) GroupDragged?.Invoke(droppedGroup, dragX - dropped.Source.MapX, dragY - dropped.Source.MapY);
                 else ObjectDragged?.Invoke(dropped, dragX, dragY, dragZ);
+                return;
+            }
+            if (click && paste != null)
+            {
+                var ph = PickAt(at);
+                if (ph.Hit) { hoverPointX = ph.X; hoverPointRow = ph.Row; UpdatePasteRegion(); PasteAt?.Invoke(pasteX, pasteRow); }
                 return;
             }
             if (click && Placing)

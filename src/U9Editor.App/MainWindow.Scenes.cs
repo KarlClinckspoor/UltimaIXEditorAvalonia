@@ -8,6 +8,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using U9.Formats.Objects;
+using U9.Formats.Triggers.Language;
 using U9.Formats.Triggers;
 using U9Editor.Core;
 
@@ -57,7 +58,7 @@ namespace U9Editor.App
             }
         }
 
-        void OnScriptsEdited() => Dispatcher.UIThread.Post(ShowScenes);
+        void OnScriptsEdited() => Dispatcher.UIThread.Post(() => { ShowScenes(); scriptWindow?.ScriptsChanged(); });
 
         void OnSceneSelected(object sender, SelectionChangedEventArgs e)
         {
@@ -147,7 +148,7 @@ namespace U9Editor.App
         {
             scriptSlot = slot;
             ScriptHeader.Text = header;
-            ScriptText.Text = triggerScripts != null && slot > 0 ? TriggerScripts.Format(triggerScripts[slot]) : "";
+            ScriptText.Text = triggerScripts != null && slot > 0 ? TriggerPrinter.Print(triggerScripts[slot], triggerNames, slot) : "";
         }
 
         void OnScriptReload(object sender, RoutedEventArgs e) { if (scriptSlot > 0) ShowScript(scriptSlot, ScriptHeader.Text); }
@@ -156,8 +157,9 @@ namespace U9Editor.App
         {
             if (editor == null || scriptSlot <= 0) { StatusText.Text = "Pick a scene or a move first."; return; }
             TriggerOp[] ops;
-            try { ops = TriggerScripts.Parse(ScriptText.Text); }
-            catch (FormatException ex) { StatusText.Text = "Script not applied: " + ex.Message; return; }
+            var compiled = TriggerCompiler.Compile(ScriptText.Text, triggerNames, scriptSlot);
+            if (!compiled.Ok) { StatusText.Text = "Script not applied: " + string.Join("; ", compiled.Diagnostics.Where(d => !d.Warning).Take(3)); return; }
+            ops = compiled.Ops;
             int slot = scriptSlot;
             string header = ScriptHeader.Text;
             Edit(() => editor.SetScriptOps(slot, ops));

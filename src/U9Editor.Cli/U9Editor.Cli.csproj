@@ -9,4 +9,7 @@
     <ProjectReference Include="../U9.Formats/U9.Formats.csproj" />
     <ProjectReference Include="../U9Editor.Core/U9Editor.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="../../names/trigger-names.txt" Link="names/trigger-names.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

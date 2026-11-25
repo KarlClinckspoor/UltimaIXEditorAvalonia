@@ -5,5 +5,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../U9.Formats/U9.Formats.csproj" />
+    <ProjectReference Include="../U9.Mods/U9.Mods.csproj" />
   </ItemGroup>
 </Project>

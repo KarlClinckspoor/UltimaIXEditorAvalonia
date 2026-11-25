@@ -49,6 +49,8 @@ namespace U9Editor.Core
             public (int Number, (string Title, string Text)? Before, (string Title, string Text)? After)? Book;
             /// <summary>Script slots the step changed: ops before and after (empty = unused).</summary>
             public List<(int Slot, TriggerOp[] Before, TriggerOp[] After)> Scripts;
+            /// <summary>TYPES.DAT fields the step changed: before and after.</summary>
+            public List<(int Type, TypeField Field, int Before, int After)> Types;
         }
 
         readonly List<Step> undo = new List<Step>(), redo = new List<Step>();
@@ -96,7 +98,7 @@ namespace U9Editor.Core
         public bool FixedChanged => FixedTop != fixedSavedAt;
         public bool NonfixedChanged => NonfixedTop != nonfixedSavedAt;
         public bool ScriptsChanged => ScriptsTop != scriptsSavedAt;
-        public bool HasChanges => FixedChanged || NonfixedChanged || ScriptsChanged || TerrainChanged || BooksChanged;
+        public bool HasChanges => FixedChanged || NonfixedChanged || ScriptsChanged || TerrainChanged || BooksChanged || TypesChanged;
         public string UndoDescription => undo.Count > 0 ? undo[^1].Description : null;
         public string RedoDescription => redo.Count > 0 ? redo[^1].Description : null;
 
@@ -215,6 +217,7 @@ namespace U9Editor.Core
             if (s.Terrain != null) { ApplyTerrain(s.Terrain, after: false); terrainVersion--; }
             if (s.Water is { } wu) { SetWater(wu.Before); terrainVersion--; }
             if (s.Book is { } bu) PutBook(bu.Number, bu.Before);
+            if (s.Types != null) for (int i = s.Types.Count - 1; i >= 0; i--) PutType(s.Types[i].Type, s.Types[i].Field, s.Types[i].Before);
             // scripts first: listeners of Changed rebuild the link list from them
             if (s.Scripts != null) { foreach (var sc in Enumerable.Reverse(s.Scripts)) Scripts.Set(sc.Slot, sc.Before); scriptVersion--; RaiseScriptsEdited(); }
             if (s.Map != null)
@@ -243,6 +246,7 @@ namespace U9Editor.Core
             if (s.Terrain != null) { ApplyTerrain(s.Terrain, after: true); terrainVersion++; }
             if (s.Water is { } wr) { SetWater(wr.After); terrainVersion++; }
             if (s.Book is { } br) PutBook(br.Number, br.After);
+            if (s.Types != null) foreach (var t in s.Types) PutType(t.Type, t.Field, t.After);
             if (s.Follow != null)
                 foreach (var f in s.Follow) { f.Map.Redo(f.Edit); Bump(f.Map, +1); Publish(f.Edit); }
             undo.Add(s);
@@ -417,6 +421,14 @@ namespace U9Editor.Core
                 Books.Save();
                 written.Add(Books.Path);
                 booksSavedAt = BooksTop;
+            }
+            if (TypesChanged && Types?.Path != null)
+            {
+                string backup = Types.Path + ".orig";
+                if (File.Exists(Types.Path) && !File.Exists(backup)) File.Copy(Types.Path, backup);
+                Types.Save();
+                written.Add(Types.Path);
+                typesSavedAt = TypesTop;
             }
             if (FixedChanged && Fixed != null && fixedPath != null) { Write(Fixed, fixedPath); written.Add(fixedPath); fixedSavedAt = FixedTop; }
             if (NonfixedChanged && Nonfixed != null && nonfixedPath != null) { Write(Nonfixed, nonfixedPath); written.Add(nonfixedPath); nonfixedSavedAt = NonfixedTop; }

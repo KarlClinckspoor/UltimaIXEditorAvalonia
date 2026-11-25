@@ -23,7 +23,29 @@ namespace U9Editor.App
         public static float LookX = float.NaN, LookRow = float.NaN, Distance = float.NaN, Pitch = float.NaN, Yaw = float.NaN;
         /// <summary>--scene N --scene-time S: start with the view of the map's scene N (as the Scenes tab lists them, from 0) at S seconds.</summary>
         public static int SceneAtStart = -1;
+        /// <summary>--scripts N: open the trigger script editor at script N (0: no script); --scripts-text PATH: then put that text in
+        /// it as if typed; --scripts-side globals|symbols: open a side list; --scripts-shot PATH: save the editor window as a PNG and quit.</summary>
+        public static int ScriptsAtStart = -1;
+        public static string ScriptsTextPath, ScriptsSide, ScriptsShotPath;
+        /// <summary>--combat TAB: open the combat balance window on a tab (balance, balance-you, weapons, armour, creatures, natural,
+        /// multipliers); --combat-shot PATH: save it as a PNG, then quit; --combat-armour N: wear armour set N (0 none .. 6 blackrock).</summary>
+        public static string CombatAtStart, CombatShotPath;
+        public static int CombatArmourAtStart = -1;
+        /// <summary>--dialogue: open the dialogue editor; --dialogue-line N: on that line; --dialogue-find TEXT: with that search;
+        /// --dialogue-shot PATH: save it as a PNG, then quit.</summary>
+        public static bool DialogueAtStart, DialogueVowelAtStart;
+        public static string DialogueShotPath, DialogueFindAtStart;
+        public static int DialogueLineAtStart = -1;
         public static float SceneTimeAtStart;
+        /// <summary>--prefab X0,ROW0,X1,ROW1: copy every object in that rectangle of points (with its ground); --paste X,ROW[,TURNS]: paste
+        /// it with its first point there (quarter turns counter-clockwise); --paste-preview X,ROW[,TURNS]: only show its outline there.</summary>
+        public static int[] PrefabAtStart, PasteAtStart, PastePreviewAtStart;
+        /// <summary>--prefab-file PATH: a saved prefab to paste with --paste or --paste-preview (instead of --prefab).</summary>
+        public static string PrefabFileAtStart;
+        /// <summary>--tab NAME: the side tab to show (its header, e.g. Prefabs).</summary>
+        public static string TabAtStart;
+        /// <summary>--select X,ROW: select the object nearest that point (points, fractions allowed).</summary>
+        public static float SelectX = float.NaN, SelectRow = float.NaN;
 
         [STAThread]
         public static void Main(string[] args)
@@ -46,6 +68,28 @@ namespace U9Editor.App
                 else if (a == "--pitch" && i + 1 < args.Length) float.TryParse(args[++i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out Pitch);
                 else if (a == "--scene" && i + 1 < args.Length) int.TryParse(args[++i], out SceneAtStart);
                 else if (a == "--scene-time" && i + 1 < args.Length) float.TryParse(args[++i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out SceneTimeAtStart);
+                else if (a == "--scripts" && i + 1 < args.Length) int.TryParse(args[++i], out ScriptsAtStart);
+                else if (a == "--scripts-text" && i + 1 < args.Length) ScriptsTextPath = args[++i];
+                else if (a == "--scripts-side" && i + 1 < args.Length) ScriptsSide = args[++i];
+                else if (a == "--scripts-shot" && i + 1 < args.Length) ScriptsShotPath = args[++i];
+                else if (a == "--combat" && i + 1 < args.Length) CombatAtStart = args[++i];
+                else if (a == "--combat-shot" && i + 1 < args.Length) CombatShotPath = args[++i];
+                else if (a == "--combat-armour" && i + 1 < args.Length) int.TryParse(args[++i], out CombatArmourAtStart);
+                else if (a == "--dialogue") DialogueAtStart = true;
+                else if (a == "--dialogue-vowel") { DialogueAtStart = true; DialogueVowelAtStart = true; }
+                else if (a == "--dialogue-line" && i + 1 < args.Length) { DialogueAtStart = true; int.TryParse(args[++i], out DialogueLineAtStart); }
+                else if (a == "--dialogue-find" && i + 1 < args.Length) { DialogueAtStart = true; DialogueFindAtStart = args[++i]; }
+                else if (a == "--dialogue-shot" && i + 1 < args.Length) { DialogueAtStart = true; DialogueShotPath = args[++i]; }
+                else if (a == "--prefab" && i + 1 < args.Length) PrefabAtStart = Ints(args[++i]);
+                else if (a == "--prefab-file" && i + 1 < args.Length) PrefabFileAtStart = args[++i];
+                else if (a == "--paste" && i + 1 < args.Length) PasteAtStart = Ints(args[++i]);
+                else if (a == "--paste-preview" && i + 1 < args.Length) PastePreviewAtStart = Ints(args[++i]);
+                else if (a == "--tab" && i + 1 < args.Length) TabAtStart = args[++i];
+                else if (a == "--select" && i + 1 < args.Length)
+                {
+                    var xy = args[++i].Split(',');
+                    if (xy.Length == 2) { float.TryParse(xy[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out SelectX); float.TryParse(xy[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out SelectRow); }
+                }
                 else if (a == "--yaw" && i + 1 < args.Length) float.TryParse(args[++i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out Yaw);
                 else if (a == "--size" && i + 1 < args.Length)
                 {
@@ -54,6 +98,14 @@ namespace U9Editor.App
                 }
             }
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        }
+
+        static int[] Ints(string s)
+        {
+            var parts = s.Split(',');
+            var r = new int[parts.Length];
+            for (int k = 0; k < parts.Length; k++) if (!int.TryParse(parts[k].Trim(), out r[k])) return null;
+            return r;
         }
 
         public static AppBuilder BuildAvaloniaApp() =>

@@ -21,6 +21,9 @@ namespace U9Editor.Render
         public int SelectedX = -1, SelectedRow = -1;
         /// <summary>The terrain brush ring: centre in points and radius; radius 0 hides it.</summary>
         public float BrushX, BrushRow, BrushRadius;
+        /// <summary>A prefab's footprint (first and last point, x and row; X1 &lt; X0 hides it), its edge in points and which side its north faces (0 north, 1 west, 2 south, 3 east).</summary>
+        public float RegionX0, RegionRow0, RegionX1 = -1, RegionRow1, RegionMargin;
+        public int RegionNorth;
         public bool ShowFixed = true, ShowNonfixed = true;
         /// <summary>Draw object models (and markers only for objects without one, plus link zones), or markers for all.</summary>
         public bool ShowModels = true;
@@ -436,6 +439,9 @@ namespace U9Editor.Render
                 gl.Uniform2(U(terrainProg, "uHover"), st.HoverX, st.HoverRow);
                 gl.Uniform2(U(terrainProg, "uSelected"), st.SelectedX, st.SelectedRow);
                 gl.Uniform3(U(terrainProg, "uBrush"), st.BrushX, st.BrushRow, st.BrushRadius);
+                gl.Uniform4(U(terrainProg, "uRegion"), st.RegionX0, st.RegionRow0, st.RegionX1, st.RegionRow1);
+                gl.Uniform1(U(terrainProg, "uRegionMargin"), st.RegionMargin);
+                gl.Uniform1(U(terrainProg, "uRegionNorth"), st.RegionNorth);
                 gl.Uniform1(U(terrainProg, "uHaveTextures"), haveTextures ? 1 : 0);
                 gl.Uniform1(U(terrainProg, "uUvRotate"), st.UvRotate & 3);
                 gl.Uniform1(U(terrainProg, "uUvFlipV"), st.UvFlipV ? 1 : 0);

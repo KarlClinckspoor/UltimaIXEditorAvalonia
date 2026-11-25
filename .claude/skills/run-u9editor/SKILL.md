@@ -166,6 +166,22 @@ into them with an explicit z rather than walking. Read the position with `pos` b
   `ctrl+y = toggle_avatar_fly` (checked: he flies through the house wall), `ctrl+u = toggle_avatar_invulnerable`.
 - Always `-Uninstall` afterwards, and put back any `default.kmp` edit: the game folder is the user's copy.
 
+## Trigger script editor
+
+Edit > Trigger scripts (Ctrl+T) opens it; the language is in `docs/trigger-language.md`. Without the desktop (a
+locked screen too), start options open it, put text in it, show a side list and save the window:
+
+```powershell
+Start-Process -Wait -FilePath src\U9Editor.App\bin\Debug\net10.0\U9Editor.exe -ArgumentList "--gamedata gamedata --map 9 --size 1400x900 --scripts 2551 --scripts-side symbols --scripts-shot $env:TEMP\u9_se.png"
+```
+
+`--scripts N` opens script N (0: none), `--scripts-text FILE` types that file's text into it (it is checked:
+errors underlined and listed), `--scripts-side globals|symbols` opens a side list, `--scripts-shot PNG` saves the
+editor window and quits. Script 2551 has labels, a tint test and dimmed `[A=...]` fields; 584 sets globals and
+plays the Ambush movie. `dotnet src/U9Editor.Cli/bin/Debug/net10.0/u9.dll script gamedata 584` prints a script.
+Apply, New and Delete are undo steps of the open map, saved by Ctrl+S into `static/TRIGGERS.FLX` (keeping
+`.orig`): put the file back after a test. The completion popup and F2 need the live window (driver keys).
+
 ## Scenes
 
 The Scenes tab (at y 306 / 319 like the others, x 1269 with an object selected) lists the map's scenes; on Earth
@@ -203,6 +219,91 @@ importer reads either. Afterwards put `sappear.flx.orig` back over `sappear.flx`
 outdoor barrels (model 23) are at 494.6, 444.6: `tools/game-test.ps1 -Map 9 -X 492 -Row 445 -Height 2420` starts in
 the archery yard beside them (without -Height the Avatar can land under a house floor), and the start view after
 `hours 5` and `tap ctrl+delete` shows them at the left edge.
+
+## Prefabs
+
+Ctrl+C copies the selection with its ground; Ctrl+V shows the outline under the mouse, `[` / `]` turn it, a click pastes,
+Esc stops (the Prefabs tab holds the options and the library). Mouse-free pictures, copying the objects round Moonglow
+on Britannia and pasting them onto map 4 turned a quarter:
+
+```powershell
+$pf = "$env:TEMP\moonglow.u9prefab"
+dotnet src/U9Editor.Cli/bin/Debug/net10.0/u9.dll prefab-copy gamedata 9 738 390 750 402 $pf
+Start-Process -Wait -FilePath src\U9Editor.App\bin\Debug\net10.0\U9Editor.exe -ArgumentList "--gamedata gamedata --map 4 --size 1400x900 --look 240,200 --distance 30 --pitch 55 --tab Prefabs --prefab-file $pf --paste 233,193,1 --screenshot $env:TEMP\u9_paste.png"
+```
+
+`--prefab X0,ROW0,X1,ROW1` copies on the start map instead of `--prefab-file`; `--paste-preview X,ROW[,TURNS]` shows
+only the outline (with `--window-shot`, the Prefabs tab beside it). Nothing is saved; scripted shots close without the
+unsaved-changes question. `u9 prefab-paste` does write the map's files and TRIGGERS.FLX: back them up first, put them
+back and delete the `.orig` files afterwards. Britannia has hardly any flat, empty ground; map 4 round 240, 200 is
+grass and a road, handy for seeing a paste.
+
+## Mod manager
+
+`src/U9ModManager` (the app) and `u9mod` (`dotnet src/U9ModManager.Cli/bin/Debug/net10.0/u9mod.dll help`). Never
+point them at `gamedata/` with a real home: test in a temp game folder (copies of `u9.exe` and the files a mod
+touches) with `U9MM_HOME` (CLI) or `--home` (app) set to a temp folder. The app takes `--game PATH --home PATH --shot
+out.png` (saves the window and quits). `tests/U9.Mods.Tests` builds such folders itself (`TempGame`).
+
+## Combat balance
+
+Edit > Combat balance (Ctrl+B) opens `CombatWindow`. A mouse-free picture of a tab:
+
+```powershell
+Start-Process -Wait -FilePath src\U9Editor.App\bin\Debug\net10.0\U9Editor.exe -ArgumentList "--gamedata gamedata --map 4 --size 1400x900 --combat balance --combat-armour 3 --combat-shot $env:TEMP\u9_combat.png"
+```
+
+`--combat` takes balance, balance-you (the "them to kill you" map), weapons, armour, creatures, natural or
+multipliers; `--combat-armour 0-6` wears a set (none, leather, chain, plate, bone, wyrmguard, blackrock). The CLI does
+the same without a window: `u9 combat <game>` prints the tables and pending patches, `u9 combat-set <game>
+weapon:5388.max=80 mult:31.cold=0.75 npc:47.hp=150 ...` edits and saves, `u9 combat-balance <game> --weapon 5388
+--armour 3`, `u9 combat-exe <game> out.exe` writes the patched image elsewhere. Saving writes
+`u9.exe.patches.json` and `runtime/NPC.FLX` (+ `.orig`): do it in a temp game folder (copies of `u9.exe`,
+`runtime/NPC.FLX`, `static/TYPENAME.FLX`), never in `gamedata/`. To check a multiplier change really runs, emulate
+the start-up code (VA 0x44A040) of the written exe with unicorn (`uv run --with pefile --with unicorn python ...`, as
+`analysis/item-stats/emu_resist.py` does) and compare the 704 floats at VA 0x84E598.
+
+## Dialogue
+
+Edit > Dialogue (Ctrl+G) opens `DialogueWindow`. Mouse-free pictures: `--dialogue-line 4257 --dialogue-shot out.png`
+(a line with a U+0092 apostrophe: shows the warning, Fix characters and the wrap preview) or `--dialogue-find glyph
+--dialogue-shot out.png`. Saving writes `static/text.flx` and, after Replace voice from WAV, `sound/Speech.flx`
+(140 MB) with `.orig` copies: test in a temp folder, never `gamedata/`. `u9 speech-wav gamedata 6 out.wav` decodes
+a clip (the decoder matches TITAN's bit for bit: `uv run --with titan-ultima --with numpy` can check). Playback
+(PlaySound) is Windows only; nobody can hear it in a scripted run, so ask the user to listen.
+
+## Watching the game's mechanics live (u9mon)
+
+`tools/u9mon.py` hooks u9.exe with Frida (no file changes; the exe always loads at 0x400000, so the decompile's
+addresses are live addresses). It prints:
+- HP (and mana) losses, with the damage path that caused them;
+- spell casts, with the spell number;
+- creatures fighting and changing target, and the team (friend) test per pair;
+- trigger scripts: each run (object, which script, slot), every op with the flag it left, commands sent to objects,
+  and the helpers behind the commands still marked **?**.
+
+It can also travel and run scripts. The addresses and how they were found are in `docs/exe-research.md` section 6.
+
+```powershell
+uv run --with frida python tools/u9mon.py --wait --log $env:TEMP\u9mon.jsonl --commands $env:TEMP\u9cmds.txt
+powershell -ExecutionPolicy Bypass -File tools/keep-awake.ps1 -Minutes 120        # stops Windows locking meanwhile
+powershell -ExecutionPolicy Bypass -File tools/arena-test.ps1 -Test 02-crab-vs-hound -Run   # a game; closes after 5 min
+dotnet src/U9Editor.Cli/bin/Debug/net10.0/u9.dll script-uses gamedata 3E --map 9  # scripts with command 3E + tp/run lines
+Add-Content $env:TEMP\u9cmds.txt "tp 9 64516,67498,2599"                          # then, once it says RESULT tp:
+Add-Content $env:TEMP\u9cmds.txt "run 2121 3076 1962 2535 666 0"
+```
+
+- **Commands:** `where`, `tp <map> x,y[,z] [yaw]`, `find <type> x y z link` and `run <type> x y z link which [label]`.
+  They come from stdin or from lines appended to the `--commands` file, and run between frames on the game's thread.
+  `x y z` for find and run are the record's in-chunk values, which `script-uses` prints ready to paste.
+- **Checked on 2026-11-25:** `where`, a `tp` from the arena (map 91) to Britannia, and `run` of script 1814 (command
+  3E: helper 0x5B7220 got B = 6 and returned 1).
+- **`run` only finds objects on the current map,** so `tp` there first.
+- **Repeats are shown once.** A script that runs again the same way (some run every frame) prints a single
+  "ran again the same way" line.
+- **`--wait`** attaches as soon as the game starts, and the monitor quits when the game does.
+- When you wait on its output from Bash, name the monitor's own task output file. "Newest file" picks your waiting
+  command's file instead.
 
 ## Run (human path)
 

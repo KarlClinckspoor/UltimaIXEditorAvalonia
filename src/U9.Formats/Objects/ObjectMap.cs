@@ -36,8 +36,11 @@ namespace U9.Formats.Objects
     /// u16 link, +0x1C u32 property segment offset (16 bytes, usually in the record's page).</item>
     /// </list>
     /// Checked on every shipped file: every record in a first page's lists is filed under the subchunk its
-    /// position gives, and the records counted in a chunk's pages add up to those in its lists. The file is kept as
-    /// bytes and edited in place, so it writes back unchanged unless edited.
+    /// position gives. A page's +0x14 counts the records in it, the ones inside containers (in no list) included:
+    /// over the 164 nonfixed files, 2,717 pages count only listed records and hold no contained ones, 122 count
+    /// listed and contained ones, and one page with contained records counts only the listed. +0x18 counts every
+    /// property segment in the page, chained segments and those of contained records included (all 164 files).
+    /// The file is kept as bytes and edited in place, so it writes back unchanged unless edited.
     /// </summary>
     public sealed partial class ObjectMap
     {

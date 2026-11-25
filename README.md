@@ -21,6 +21,23 @@ It reads and writes the game's own files, so changes show up in the real game.
   in the 3D view; change a move's duration and style, put a camera point where the view is, edit any script as
   text, and make new scenes: a trigger zone and camera points from the view, move by move, or a camera circling an
   object. Saves `TRIGGERS.FLX` and `nonfixed.N`.
+- **Prefabs**: copy a group of objects with the ground under it and paste it elsewhere, on the same map or another,
+  turned in quarter turns, its edge blended into the ground there. Objects come whole (properties, chained
+  properties, what containers hold), with new link numbers and copies of the scripts they run. Prefabs can be saved
+  to a library and pasted into any map later.
+- **Combat balance** (Edit > Combat balance, Ctrl+B): how many hits the Avatar needs to kill each creature with each
+  weapon, and how many each creature needs to kill the Avatar in each armour set, worked out from the game's own
+  tables and damage rules; and editing of weapons, shields, armour, creatures' natural attacks and damage multipliers
+  (tables in `u9.exe`, kept as patches) and creatures' HP, defence and kind (`runtime/NPC.FLX`).
+- **Dialogue** (Edit > Dialogue, Ctrl+G): every conversation line (`static/text.flx`) by conversation, with its voice
+  clip (`sound/Speech.flx`, EA MicroTalk, decoded to play or save as WAV); edit lines with a live check of what the
+  game will show (its code page, the subtitle font's glyphs, wrapping in the 600 px box, pages, timing) and replace
+  a voice from a WAV.
+- **Mods**: File > Export changes as mod makes a `.u9mod` of what the editor saved (differences only, never the game's
+  files). The **U9 Mod Manager** (`src/U9ModManager`, and `u9mod` on the command line) applies several mods at once,
+  merging their changes and refusing clashes, puts the original game back, downloads mods from a catalog and fetches
+  U9GL. `u9.exe` is never changed: executable patches go into `u9-mod.exe`. See [docs/mod-format.md](docs/mod-format.md);
+  what data can change and what needs the executable: [docs/modding.md](docs/modding.md).
 - **Look**: a light, compact, classic theme by default (framed lists and tabs, gradient buttons) and a dark one
   (View > Theme).
 - **Formats**: readers and writers for FLX archives, terrain, object files, types, models and bitmaps, tested
@@ -39,13 +56,16 @@ Usable for object, link, terrain, contents and model editing on any map. Work is
 
 1. **In-game verification** (done): confirm terrain painting, blended edges and objects following the ground in the game.
 2. **Multi-select and group editing** (done): box and Ctrl+click selection; move, turn, copy and delete groups as one undo step.
-3. **Prefabs**: copy and paste a group of objects with its ground, also between maps.
+3. **Prefabs** (done): copy and paste a group of objects with its ground, also between maps; a library of saved prefabs.
 4. **Search and navigation** (done): find objects by type or name, jump to link destinations, bookmarks.
 5. **Object contents** (done): book texts, container contents, NPC and object properties.
 6. **New models through Blender** (done): import and export `sappear.flx` models via glTF.
 7. **Cutscene viewer and editor** (camera part done): play the game's in-engine cutscenes in the 3D view (starting
    with the first one, the camera entering the Avatar's house) and edit their camera moves and timing. Still to
-   come: the actors (NPC moves and animations), speech and the other ops the scenes' scripts run.
+   come: the actors (NPC moves and animations), speech and the other ops the scenes' scripts run. The trigger
+   scripts behind scenes, doors and map links read and write in a C-like language
+   ([docs/trigger-language.md](docs/trigger-language.md)), in a script editor (Edit > Trigger scripts) with a live
+   check, completion, find and replace, renaming and lists of globals and symbols.
 8. **Object viewer, browser and properties**: any object in its own 3D view; the objects around the selection or
    camera; an add-object tool that filters the types; finding objects by property, model or contents; and editing
    properties, both type-wide in `TYPES.DAT` (a sword's damage and damage type, health) and per object, every field
@@ -73,8 +93,12 @@ Map 9 is Britannia. Developed and tested on Windows; the editor needs OpenGL 3.3
 | `src/U9Editor.Render` | OpenGL 3.3 / GLES 3.0 terrain renderer (Silk.NET), toolkit-agnostic. |
 | `src/U9Editor.App` | The Avalonia editor: 3D view, map list, view options. |
 | `src/U9Editor.Cli` | `u9` command line: dump, unpack, debug pictures. |
+| `src/U9.Mods` | Mod packages (`.u9mod`): deltas, executable patches, stacking, the installer, the catalog, U9GL downloads. |
+| `src/U9ModManager` | The mod manager (Avalonia). |
+| `src/U9ModManager.Cli` | `u9mod`: the mod manager on the command line. |
 | `tests/U9.Formats.Tests` | Round-trip tests over every shipped file. |
 | `tests/U9Editor.Core.Tests` | Picking and map-space tests. |
+| `tests/U9.Mods.Tests` | Mods made, applied, stacked and taken back on copies of the game's files. |
 | `analysis/` | Survey notes on `u9.exe`. |
 | `tools/` | Helper scripts (in-game testing). |
 | `gamedata/` | Your copy of the GOG install (not committed). Or set `U9_GAMEDATA`. |
@@ -128,8 +152,13 @@ object files. The panel's fields still show and set the last object picked. Esc 
 
 What objects carry (Contents tab): a nonfixed object's properties by the game's own names (Book Number, Quantity,
 Light Range, Creature Type, Spawn Percent... 69 of them), chained segments included; pick one and Set writes its two
-values (one undo step). Inside lists what a container holds or an NPC carries (with quantities); picking an item
-shows its properties, to change say the coins in a bag. For anything with a Book Number (books, plaques, signs,
+values (one undo step), Remove takes one off, and the row below adds one the object lacks (into a free place of its
+last segment, or a new chained segment when that is full; such an object then stays in its 32-point chunk when moved).
+Picking a property shows what its values mean, saying which meanings were seen in the shipped maps and which only go
+by the name. Inside lists what a container holds or an NPC carries (with quantities); picking an item
+shows its properties, to change say the coins in a bag. Below, the object's type: its TYPES.DAT values (hit points,
+weight, volume, book, default model, usecode class and the flags), for every object of that type on every map; Set
+type writes them as one undo step and Ctrl+S saves `static/TYPES.DAT` (first time keeping `.orig`). For anything with a Book Number (books, plaques, signs,
 grave markers) the panel shows the book's title and text: Set text changes them (one undo step), and Ctrl+S writes
 `static/BOOKS-EN.FLX` (first time keeping `.orig`). The book's number can be changed like any property, to point
 an object at another text.
@@ -144,6 +173,78 @@ Replace selected object's model from glTF writes the triangles into `static/sapp
 made three times as wide in Blender and imported, is drawn by the game with its texture at the archery yard.
 Materials without the u9 properties become untextured faces in their base colour; new textures are not imported
 yet, and an imported model has one limb and one level of detail.
+
+Prefabs (Prefabs tab, Ctrl+C / Ctrl+V): Ctrl+C copies the selected objects and the ground under them (their bounds
+and a margin of points round them, 3 by default). Ctrl+V, here or after opening another map, shows the prefab's outline
+on the ground under the mouse (its north side as copied in orange, its margin as an inner line); `[` and `]` turn it a
+quarter, a click pastes it, again for another, and Esc stops. A paste is one undo step: the ground (heights, or
+heights and textures; raised or lowered as a whole to meet the ground there, and faded into it across the margin, where
+textures stop halfway), the objects (each keeps its height above the ground; with no ground pasted, optionally all by
+one amount, as a building's parts must), and objects of the map already on the pasted ground going up and down with
+it. Objects come whole: property chains (monster generators) and container contents are copied with fresh offsets, so
+nothing points back into the source file. Links move together, keeping their offsets from each other, to numbers
+neither used here nor within 15 of one (a script's `link + n` reach); unchanged when they are free, as on another map
+often. Each script the objects run gets a copy in a new slot, its absolute links (`link = n`) moved too, except the
+arrival of a map change, which names a link on the other map. Optionally the objects already in the area go. The
+library keeps prefabs as `.u9prefab` files (JSON: the records, segments and contents, the ground and the scripts) in
+`%AppData%/U9Editor/prefabs`. On the command line: `u9 prefab-copy <gamedata> <map> <x0> <row0> <x1> <row1>
+<out.u9prefab> [--margin n] [--no-ground]` and `u9 prefab-paste <gamedata> <map> <x> <row> <in.u9prefab> [--turn k]
+[--ground none|heights|textures] [--keep-heights] [--no-blend] [--keep-links] [--share-scripts] [--clear]
+[--together]`.
+
+Combat balance (Edit > Combat balance, Ctrl+B) opens a window over the game folder. Its Balance tab sets up the
+Avatar (HP, strength, attack, armour per slot or a whole set, shield) and shows two heat maps: the mean number of hits
+for the Avatar to kill each creature with each weapon (the best of the weapon's attacks, or one chosen), and the mean
+number for each creature's attack to kill the Avatar in each armour set; hovering a cell shows the sums. The numbers
+follow the game's rules (analysis by disassembly of the GOG `u9.exe`, checked by a second, independent pass): damage
+is random(min, max) times the defender's multiplier for the attack's damage types, plus the Avatar's strength bonus
+(0/2/4/8) and the Gauntlets of Fury's 5, minus the defender's defence roll (creatures: random(0, defence); the Avatar:
+each armour piece's roll plus a tenth of the shield's). Blocking, poison and other on-hit effects, spells and the
+per-object Min/Max Damage and Defense properties are not counted. The other tabs edit the tables: Weapons (damage, or
+a shield's block roll, reach and hit radius), Armour, Creatures (NPC.FLX: HP, defence, kind; and the attack the balance
+uses for each), Natural attacks (damage and damage types) and Damage multipliers (64 creature kinds by 11 damage types).
+Ctrl+S saves: changes to `u9.exe`'s tables go to `u9.exe.patches.json` beside it, never into `u9.exe`; NPC.FLX is
+written with an `.orig` copy (new games only: saves keep their own NPC records). Export changes as mod then carries the
+patches, with notes such as "Longsword (5388): max damage 60 -> 80", and the mod manager writes them into
+`u9-mod.exe`. Some damage multipliers are set by one-byte pushes in the start-up code; changing one of those rewrites
+that function as a table copy (checked by emulating it). On the command line: `u9 combat`, `u9 combat-set`, `u9
+combat-balance` and `u9 combat-exe` (see `u9 help`).
+
+Dialogue (Edit > Dialogue, Ctrl+G) lists the 266 conversations of `static/text.flx` (one per source file of the
+game's compiled conversation code) and their lines, with speaker and voice length; Ctrl+F searches every line by
+text, clip name or number. What the game shows is the text.flx line, so editing it changes subtitles, reply choices
+and journal entries; which lines exist and where replies lead is compiled code and stays as it is. While you type,
+the editor shows what the game will make of the line: it converts it to the Windows code page and draws single
+bytes with a 224-glyph font, so characters outside Windows-1252 become "?" or a near letter (no CJK), and €, Ž, ž, ©,
+®, µ and ¶ have no glyph; it wraps the line as the 600 × 200 px subtitle box does (13 lines a page) and says how
+long it stays (10 s a page without a voice; with one, until the sound ends, so a voiced line past 13 lines loses its
+tail). Fix characters replaces U+0080-U+009F, which show as "?" (two shipped lines have U+0092 for an apostrophe).
+▶ Play voice decodes the line's EA MicroTalk clip (a port of TITAN's decoder, see THIRD-PARTY-NOTICES.md); Save voice
+as WAV exports it; Replace voice from WAV stores a WAV as uncompressed PCM (22,050 Hz 16-bit mono), which the game's
+speech code accepts but no shipped clip uses, so check it in the game. Ctrl+S writes `text.flx` and, after a voice
+replacement, `Speech.flx` (140 MB), each with a `.orig` copy. `u9 speech-wav <gamedata> <line> out.wav` decodes a
+clip on the command line. How the game handles all this is written up in [docs/exe-research.md](docs/exe-research.md).
+Vowel play (the Dialogue window's button) shuffles the vowels of every proper name, one new spelling per name used
+everywhere ("Raven" might become "Rovon"), never a word the text already has: a quick test of text editing and a
+bit of fun. The idea is "Vowel play" from Merrow, the Quest 64 randomizer by hangedmandesign
+([github.com/hangedmandesign/merrow](https://github.com/hangedmandesign/merrow)), by way of the Ultima Underworld
+editor. It changes only `text.flx`; voices keep the old names, and the NPC.FLX names the game looks lines up by stay.
+
+Mods: save your changes (Ctrl+S), then File > Export changes as mod asks for a name, id, version and author and writes
+a `.u9mod`: per changed file, the difference from the `.orig` copy the editor kept, tied to that original's SHA-256.
+The U9 Mod Manager (`dotnet run --project src/U9ModManager`) adds game folders, imports mods into its library (in
+`%AppData%/U9ModManager`), and applies the ones ticked, top first: files two mods both change are merged byte by byte
+when their length stays, or record by record for FLX archives, and any clash (the same bytes, the same record, the
+same executable bytes) refuses the whole set, naming it, with nothing written. Originals go into the manager's vault
+first; "The original game" puts them back; a file changed since the manager wrote it is not overwritten without asking.
+Executable patches (and the large-address flag) go into `u9-mod.exe`, which Play starts; `u9.exe` stays as shipped,
+so U9GL's launcher, which recognises the game by its SHA-256, keeps working; U9GL's `dsound.dll` checks code in
+memory rather than the file, so it should load into the copy too (not yet tried in the game). Patches touching the code U9GL checks before hooking the game are refused. The Catalog tab reads a JSON list
+of mods from a URL and downloads them (checked against their SHA-256); the U9GL tab downloads U9GL's latest release,
+checks it against the release's SHA256SUMS, unpacks its `u9gl` folder and opens U9GL's launcher to install it. `u9mod
+help` lists the same on the command line (`make`, `import`, `plan`, `apply`, `original`, `status`, `recover`, `play`,
+`catalog`, `download`, `u9gl`). Saved games keep their own copies of nonfixed objects and NPC records, so such changes
+show in new games.
 
 Finding things (Find tab): type words of a type's name (`telescope`, `orb moons`), a type number (`2894`), `#id`
 of an object here, `link:n` of a nonfixed object, or `fixed` / `nonfixed`, and press Enter; all words must match.
@@ -197,7 +298,9 @@ are; each is one undo step. `u9 orbit-scene <gamedata> <map> <x> <row> <z> <radi
 <zone x> <zone row> [<zone z>]` does the same from the command line.
 
 Start options for scripted pictures: `--look X,ROW --distance D --pitch P --yaw Y`, and `--scene N --scene-time S`
-for the view of the map's scene N (as the Scenes tab lists them) at S seconds.
+for the view of the map's scene N (as the Scenes tab lists them) at S seconds. `--prefab X0,ROW0,X1,ROW1` copies every
+object in that rectangle of points (or `--prefab-file PATH` reads a saved prefab), then `--paste X,ROW[,TURNS]` pastes
+it there or `--paste-preview X,ROW[,TURNS]` shows its outline; `--tab NAME` opens a side tab.
 `u9 export-web <gamedata> <out> [--maps 9,10] [--texture-max 128] [--no-models]` bakes maps for the WebGL viewer in
 UltimaCartographer (`u9viewer/EXPORT.md` is the contract); it prints a size report (Britannia alone: 73 MB, of which
 37 MB are 128-pixel model textures; every map: 180 MB, 14 s).
@@ -212,12 +315,12 @@ Agents drive the running editor with `.claude/skills/run-u9editor/driver.ps1` (s
 | FLX archives (`*.flx`, `texture8.N`, `texture16.N`) | yes | yes (preserve or compact layout) | all 29 shipped archives |
 | Terrain (`terrain.N`) | yes | yes: heights, textures, holes, water level (brushes with undo) | all 168 shipped maps |
 | Bitmaps (`bitmap16.flx`: terrain and model textures) | yes | not yet | — |
-| Fixed / nonfixed objects (`fixed.N`, `nonfixed.N`) | yes | move, turn, copy, delete, place (with undo) | all shipped files |
-| Object types (`TYPES.DAT`, `TYPENAME.FLX`) | yes | not yet | — |
+| Fixed / nonfixed objects (`fixed.N`, `nonfixed.N`) | yes | move, turn, copy, delete, place, paste whole trees (with undo) | all shipped files |
+| Object types (`TYPES.DAT`, `TYPENAME.FLX`) | yes | TYPES.DAT fields (with undo) | unchanged when not edited |
 | Models (`sappear.flx`) | yes (all 3,748 models, every LOD) | one limb, one LOD, from glTF (checked in the game) | — |
 | Trigger scripts (`TRIGGERS.FLX`) | yes; map changes and camera moves understood | map-change scripts, camera moves | unchanged slots kept |
 | Book texts (`BOOKS-EN.FLX`) | yes | yes (titles and texts) | all 460 records |
-| Object properties (nonfixed property segments) | yes, named, chains followed, contents | values | — |
+| Object properties (nonfixed property segments) | yes, named, chains followed, contents | values; add and remove | — |
 
 ### Findings from the shipped files
 
@@ -292,7 +395,8 @@ Agents drive the running editor with `.claude/skills/run-u9editor/driver.ps1` (s
 - Object files: a chunk (32 x 32 points) is a chain of 4 KB pages. Only its first page's 16 list heads are used
   (later pages hold leftovers there); each list is one subchunk, `x / 1024 + 4 * (y / 1024)` inside the chunk, and
   runs through records in any of the chunk's pages. A page's +0x04 is meant as the offset of its first free byte (not dependable, see above), +0x14 the
-  records in it and (nonfixed) +0x18 its property segments. The u32 before the data is a free page list: the
+  records in it (those inside containers included, in 122 of the 123 pages that hold any) and (nonfixed) +0x18 its
+  property segments (chained ones and those of contained records included, in every file). The u32 before the data is a free page list: the
   first unused page | 1, whose +0x00 names the next. Fixed pages are packed; nonfixed pages keep holes.
   Moving an object to another chunk moves its record (and property segment) into that chunk's pages.
 - Terrain point bits 13-14 turn the quad's texture in quarter turns (not "swap" and "mirror"); turn 0 puts the

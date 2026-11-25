@@ -11,6 +11,7 @@
         <MenuItem Header="_Save map objects" InputGesture="Ctrl+S" Click="OnSave" />
         <Separator />
         <MenuItem Header="Save _picture of the view…" Click="OnSavePicture" />
+        <MenuItem Header="Export changes as _mod…" Click="OnExportMod" ToolTip.Tip="A .u9mod of the saved changes (against the .orig copies the editor keeps), for the U9 Mod Manager; it holds differences only, never the game's files" />
           <Separator />
           <MenuItem Header="_Export selected object's model (glTF)…" Click="OnExportModel" ToolTip.Tip="A .glb for Blender: textures embedded, x east, y north, z up, one terrain point = 1 m" />
           <MenuItem Header="_Replace selected object's model from glTF…" Click="OnReplaceModel" ToolTip.Tip="Writes the .glb's triangles into static/sappear.flx (first time keeping .orig); every object showing that model on every map changes" />
@@ -22,12 +23,18 @@
         <MenuItem x:Name="RedoItem" Header="_Redo" InputGesture="Ctrl+Y" Click="OnRedo" />
         <Separator />
         <MenuItem Header="_Copy the selected object" InputGesture="Ctrl+D" Click="OnDuplicate" />
+        <MenuItem Header="Copy as _prefab (objects and ground)" InputGesture="Ctrl+C" Click="OnPrefabCopy" ToolTip.Tip="Copies the selected objects and the ground under them, to paste here or on another map" />
+        <MenuItem Header="_Paste prefab…" InputGesture="Ctrl+V" Click="OnPrefabPaste" ToolTip.Tip="Its outline follows the mouse; click to paste, [ and ] turn it, Esc stops" />
         <MenuItem Header="_Delete the selected object" InputGesture="Delete" Click="OnDelete" />
         <MenuItem Header="Put it on the _ground" InputGesture="End" Click="OnDropToGround" />
         <MenuItem Header="Turn it _left (15°, Shift 1°)" InputGesture="OemOpenBrackets" Click="OnTurnLeft" />
         <MenuItem Header="Turn it _right (15°, Shift 1°)" InputGesture="OemCloseBrackets" Click="OnTurnRight" />
         <MenuItem Header="Raise it (16 units, Shift 2)" InputGesture="PageUp" Click="OnRaise" />
         <MenuItem Header="Lower it (16 units, Shift 2)" InputGesture="PageDown" Click="OnLower" />
+        <Separator />
+        <MenuItem Header="Trigger _scripts…" InputGesture="Ctrl+T" Click="OnOpenScriptEditor" ToolTip.Tip="The trigger script editor: every script of TRIGGERS.FLX in the trigger language" />
+        <MenuItem Header="_Dialogue…" InputGesture="Ctrl+G" Click="OnOpenDialogue" ToolTip.Tip="Every conversation line (static/text.flx) by conversation, with its voice clip (sound/Speech.flx)" />
+        <MenuItem Header="Combat _balance…" InputGesture="Ctrl+B" Click="OnOpenCombat" ToolTip.Tip="Hits to kill and to be killed for every creature, weapon and armour, and the editing of weapon, armour and creature stats (u9.exe's tables and NPC.FLX)" />
         <Separator />
         <MenuItem x:Name="FollowItem" Header="Dragged objects _follow the terrain" ToggleType="CheckBox" IsChecked="True" Click="OnToggleFollow" />
       </MenuItem>
@@ -162,12 +169,42 @@
                   <TextBlock Text="B" VerticalAlignment="Center" FontSize="12" />
                   <TextBox x:Name="PropB" Width="70" FontSize="12" KeyDown="OnPropKey" />
                   <Button Content="Set" Click="OnPropSet" FontSize="12" ToolTip.Tip="Writes the two values (0-65535) of the selected property; Enter does the same. Ctrl+Z takes it back." />
+                  <Button Content="Remove" Click="OnPropRemove" FontSize="12" ToolTip.Tip="Takes the selected property off the object (one undo step)" />
+                </StackPanel>
+                <TextBlock x:Name="PropHelpText" FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="6" x:Name="PropAddRow" IsEnabled="False">
+                  <ComboBox x:Name="PropAddId" Width="175" FontSize="12" SelectionChanged="OnPropAddPicked" ToolTip.Tip="A property it does not have yet" />
+                  <TextBox x:Name="PropAddA" Width="55" FontSize="12" PlaceholderText="A" />
+                  <TextBox x:Name="PropAddB" Width="55" FontSize="12" PlaceholderText="B" />
+                  <Button Content="Add" Click="OnPropAdd" FontSize="12" ToolTip.Tip="Gives the object the property with these values (one undo step). A fourth property chains on a second segment, and the object then stays in its 32-point chunk when moved." />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <TextBlock Text="Inside" FontWeight="SemiBold" VerticalAlignment="Center" />
                   <Button x:Name="PropOwnerButton" Content="Back to the object" Click="OnPropOwner" FontSize="11" IsVisible="False" />
                 </StackPanel>
                 <ListBox x:Name="ContentsList" FontSize="12" MaxHeight="130" SelectionChanged="OnContentSelected" />
+                <StackPanel x:Name="TypePanel" Spacing="4" IsVisible="False" Margin="0,6,0,0">
+                  <TextBlock x:Name="TypeHeader" FontWeight="SemiBold" TextWrapping="Wrap" />
+                  <Grid ColumnDefinitions="Auto,70,Auto,70,Auto,70" RowDefinitions="Auto,Auto,Auto" >
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Hit points" VerticalAlignment="Center" FontSize="12" Margin="0,0,4,0" ToolTip.Tip="TYPES.DAT +0xD: the type's hit points (0-255)" />
+                    <TextBox Grid.Row="0" Grid.Column="1" x:Name="TypeHp" FontSize="12" ToolTip.Tip="TYPES.DAT +0xD: the type's hit points (0-255)" />
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Weight" VerticalAlignment="Center" FontSize="12" Margin="6,0,4,0" ToolTip.Tip="TYPES.DAT +0xA (0-255); 254 and 255 cannot be picked up" />
+                    <TextBox Grid.Row="0" Grid.Column="3" x:Name="TypeWeight" FontSize="12" ToolTip.Tip="TYPES.DAT +0xA (0-255); 254 and 255 cannot be picked up" />
+                    <TextBlock Grid.Row="0" Grid.Column="4" Text="Volume" VerticalAlignment="Center" FontSize="12" Margin="6,0,4,0" ToolTip.Tip="TYPES.DAT +0xB: how much room it takes (0-255)" />
+                    <TextBox Grid.Row="0" Grid.Column="5" x:Name="TypeVolume" FontSize="12" ToolTip.Tip="TYPES.DAT +0xB: how much room it takes (0-255)" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Book" VerticalAlignment="Center" FontSize="12" Margin="0,4,4,0" ToolTip.Tip="TYPES.DAT +0xC (0-255): a book number for the type" />
+                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="TypeBook" FontSize="12" Margin="0,4,0,0" ToolTip.Tip="TYPES.DAT +0xC (0-255): a book number for the type" />
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Model" VerticalAlignment="Center" FontSize="12" Margin="6,4,4,0" ToolTip.Tip="TYPES.DAT +6: the sappear.flx model objects of this type show unless they carry their own (nonfixed objects do)" />
+                    <TextBox Grid.Row="1" Grid.Column="3" x:Name="TypeModel" FontSize="12" Margin="0,4,0,0" ToolTip.Tip="TYPES.DAT +6: the sappear.flx model objects of this type show unless they carry their own (nonfixed objects do)" />
+                    <TextBlock Grid.Row="1" Grid.Column="4" Text="Usecode" VerticalAlignment="Center" FontSize="12" Margin="6,4,4,0" ToolTip.Tip="TYPES.DAT +4: the usecode class, which picks the C++ code in u9.exe that runs the type's behaviour (and what trigger scripts reach it as). Change with care." />
+                    <TextBox Grid.Row="1" Grid.Column="5" x:Name="TypeUsecode" FontSize="12" Margin="0,4,0,0" ToolTip.Tip="TYPES.DAT +4: the usecode class, which picks the C++ code in u9.exe that runs the type's behaviour (and what trigger scripts reach it as). Change with care." />
+                  </Grid>
+                  <WrapPanel x:Name="TypeFlagPanel" />
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button Content="Set type" Click="OnTypeSet" FontSize="12" ToolTip.Tip="Writes the changed values into TYPES.DAT for every object of this type on every map (one undo step; Ctrl+S saves, the first time keeping TYPES.DAT.orig)" />
+                    <TextBlock Opacity="0.6" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap" Width="250" Text="Type-wide: every object of this type, on every map." />
+                  </StackPanel>
+                </StackPanel>
                 <StackPanel x:Name="BookPanel" Spacing="4" IsVisible="False">
                   <TextBlock x:Name="BookHeader" FontWeight="SemiBold" />
                   <TextBox x:Name="BookTitle" FontSize="12" />
@@ -228,10 +265,11 @@
                   <StackPanel Spacing="3">
                     <TextBlock x:Name="ScriptHeader" FontSize="11" TextWrapping="Wrap" Text="Pick a scene or a move to see its script." />
                     <TextBox x:Name="ScriptText" FontFamily="Cascadia Mono, Consolas, monospace" FontSize="11" AcceptsReturn="True" Height="130"
-                             TextWrapping="NoWrap" ToolTip.Tip="One op a line: the op in hex (low byte the command, high byte 0x10 + the link offset), A and B in decimal; after ';' a comment. The end is added." />
+                             TextWrapping="NoWrap" ToolTip.Tip="The script in the trigger language (docs/trigger-language.md): one statement a line. The script editor (Edit menu) has the checks, completion and lists." />
                     <StackPanel Orientation="Horizontal" Spacing="6">
                       <Button Content="Apply script" Click="OnScriptApply" FontSize="12" ToolTip.Tip="Writes the ops into the script (one undo step); every object running it changes" />
                       <Button Content="Show again" Click="OnScriptReload" FontSize="12" />
+                      <Button Content="Script editor" Click="OnScriptOpenEditor" FontSize="12" ToolTip.Tip="Opens this script in the trigger script editor" />
                     </StackPanel>
                   </StackPanel>
                 </Expander>
@@ -343,6 +381,56 @@
               <TextBlock Opacity="0.6" FontSize="11" TextWrapping="Wrap"
                          Text="Strength: point heights (a quarter unit each) per dab for Raise and Lower, percent of the way per dab for Smooth and Flatten. Holding the mouse still keeps raising. [ and ] change the radius; Ctrl+click takes the height (Flatten) or texture (Paint) from the ground. Ctrl+Z takes back a whole stroke; Ctrl+S writes static/terrain.N (the first time keeping terrain.N.orig)." />
             </StackPanel>
+          </TabItem>
+          <TabItem x:Name="PrefabTab" Header="Prefabs" FontSize="13" ToolTip.Tip="Copy objects with the ground under them and paste them elsewhere, also on other maps; keep them in a library">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+              <StackPanel Spacing="5">
+                <TextBlock Text="Copy" FontWeight="SemiBold" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <CheckBox x:Name="PrefabWithGround" Content="With the ground, and" IsChecked="True" FontSize="12" />
+                  <NumericUpDown x:Name="PrefabMargin" Value="3" Minimum="0" Maximum="32" Increment="1" FormatString="0" Width="105" FontSize="12"
+                                 ToolTip.Tip="Points of ground round the objects: the edge a paste blends into the ground it lands on" />
+                  <TextBlock Text="points round" VerticalAlignment="Center" FontSize="12" />
+                </StackPanel>
+                <Button Content="Copy the selection (Ctrl+C)" Click="OnPrefabCopy" FontSize="12" />
+                <TextBlock x:Name="PrefabInfo" FontSize="11" TextWrapping="Wrap" Opacity="0.8" Text="Nothing copied yet: select objects (Ctrl+drag boxes them) and press Ctrl+C." />
+                <TextBlock Text="Paste" FontWeight="SemiBold" Margin="0,4,0,0" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Ground" VerticalAlignment="Center" FontSize="12" />
+                  <ComboBox x:Name="PrefabGroundMode" SelectedIndex="2" FontSize="12" Width="190">
+                    <ComboBoxItem Content="Leave the ground here" />
+                    <ComboBoxItem Content="Heights" />
+                    <ComboBoxItem Content="Heights and textures" />
+                  </ComboBox>
+                </StackPanel>
+                <CheckBox x:Name="PrefabFit" Content="Fit its heights to the ground here" IsChecked="True" FontSize="12"
+                          ToolTip.Tip="Raises or lowers the pasted ground as a whole so its edge meets the ground it lands on; off, the heights are pasted as copied" />
+                <CheckBox x:Name="PrefabBlend" Content="Blend its edge into the ground here" IsChecked="True" FontSize="12"
+                          ToolTip.Tip="Across the margin the heights fade into the ground there, and textures stop halfway" />
+                <CheckBox x:Name="PrefabFollow" Content="Without ground: objects keep their height above it" IsChecked="True" FontSize="12"
+                          ToolTip.Tip="Off, all objects move up or down by one amount, as the parts of a building must" />
+                <CheckBox x:Name="PrefabNewLinks" Content="New link numbers (keeping their offsets)" IsChecked="True" FontSize="12"
+                          ToolTip.Tip="The objects' links move up together above the map's highest, so scripts that reach link + n still find each other and nothing here is mixed up with them" />
+                <CheckBox x:Name="PrefabCopyScripts" Content="Own copies of their scripts" IsChecked="True" FontSize="12"
+                          ToolTip.Tip="Each script the objects run gets a new slot (with its links renumbered), so editing the copy leaves the original alone" />
+                <CheckBox x:Name="PrefabClear" Content="Delete the objects already in its area" FontSize="12"
+                          ToolTip.Tip="Objects of this map standing inside the prefab's area (within its margin) are deleted with the paste" />
+                <Button Content="Paste… (Ctrl+V)" Click="OnPrefabPaste" FontSize="12" ToolTip.Tip="The outline follows the mouse; click to paste, [ and ] turn it a quarter, Esc stops" />
+                <TextBlock Text="Library" FontWeight="SemiBold" Margin="0,4,0,0" />
+                <ListBox x:Name="PrefabList" FontSize="12" Height="110" DoubleTapped="OnPrefabUse" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBox x:Name="PrefabName" Width="200" FontSize="12" PlaceholderText="name for what is copied" />
+                  <Button Content="Save" Click="OnPrefabSave" FontSize="12" ToolTip.Tip="Keeps what is copied as a prefab file in the library" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Button Content="Paste this one" Click="OnPrefabUse" FontSize="12" />
+                  <Button Content="Delete" Click="OnPrefabDelete" FontSize="12" />
+                  <Button Content="Open folder" Click="OnPrefabFolder" FontSize="12" />
+                </StackPanel>
+                <TextBlock Opacity="0.6" FontSize="11" TextWrapping="Wrap"
+                           Text="A prefab keeps the objects whole (properties, contents, chained properties) and the scripts they run, so it pastes the same into any map and any game folder. Each paste is one undo step; Ctrl+S writes the map's files (and TRIGGERS.FLX for copied scripts)." />
+              </StackPanel>
+            </ScrollViewer>
           </TabItem>
         </TabControl>
       </DockPanel>

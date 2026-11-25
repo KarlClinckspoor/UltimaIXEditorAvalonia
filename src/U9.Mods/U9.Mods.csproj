@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Mod packages (.u9mod): deltas, executable patches, stacking, the installer, the catalog and U9GL downloads. No UI. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>U9.Mods</AssemblyName>
+    <RootNamespace>U9.Mods</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../U9.Formats/U9.Formats.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,6 +1,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace U9.Formats.Objects
 {
@@ -106,6 +107,107 @@ namespace U9.Formats.Objects
                 }
             }
             return list;
+        }
+
+        /// <summary>
+        /// Gives a nonfixed object (or one inside it) a new property: into a free place of its last segment, or a new
+        /// segment in its chunk when it has none or the last is full (then the last place's property moves into the new
+        /// segment and a Next Property Pointer takes its place, as the shipped chains are built). Undoable inside an edit.
+        /// </summary>
+        public void AddProperty(MapObject o, int id, int a, int b)
+        {
+            if (Kind != ObjectFileKind.Nonfixed) throw new InvalidOperationException("Only nonfixed objects have properties");
+            if (id == PropertyNames.NextPropertyPointer || id == PropertyNames.Contents || id <= 0 || id > 0xFF)
+                throw new ArgumentException($"{PropertyNames.NameOf(id)} cannot be added by hand", nameof(id));
+            if ((uint)a > 0xFFFF || (uint)b > 0xFFFF) throw new ArgumentOutOfRangeException(nameof(a), "Property values are 0 to 65535");
+            if (PropertiesOf(o).Any(p => p.Id == id)) throw new InvalidOperationException($"It already has {PropertyNames.NameOf(id)}");
+            if (byOffset.TryGetValue(o.FileOffset, out var listed) && listed == o) Touch(o);
+            int chunk = o.ChunkX / ChunkUnits + o.ChunkY / ChunkUnits * Width;
+            int first = o.PropertyOffset;
+            if (first == 0 || DataStart + (long)first + 16 > Data.Length)
+            {
+                var seg = NewSegment(chunk, new[] { (id, a, b) });
+                uint flag = U32(o.FileOffset + 0x1C) & 1u;
+                PutU32(o.FileOffset + 0x1C, (uint)(seg - DataStart) | flag);
+                return;
+            }
+            // the last segment of the chain
+            int last = first;
+            var seen = new HashSet<int>();
+            while (seen.Add(last))
+            {
+                int next = 0, n = Math.Min(3, (int)Data[DataStart + last]);
+                for (int k = 0; k < n; k++)
+                    if (Data[DataStart + last + 1 + k] == PropertyNames.NextPropertyPointer)
+                        next = U16(DataStart + last + 4 + 4 * k) | (U16(DataStart + last + 6 + 4 * k) << 16);
+                if (next == 0 || DataStart + (long)next + 16 > Data.Length) break;
+                last = next;
+            }
+            int at = DataStart + last, count = Math.Min(3, (int)Data[at]);
+            if (count < 3)
+            {
+                Put(at, new[] { (byte)(count + 1) });
+                Put(at + 1 + count, new[] { (byte)id });
+                PutU16(at + 4 + 4 * count, a);
+                PutU16(at + 6 + 4 * count, b);
+                return;
+            }
+            var moved = (Data[at + 3], U16(at + 12), U16(at + 14));
+            int fresh = NewSegment(chunk, new[] { ((int)moved.Item1, moved.Item2, moved.Item3), (id, a, b) });
+            int rel = fresh - DataStart;
+            Put(at + 3, new[] { (byte)PropertyNames.NextPropertyPointer });
+            PutU16(at + 12, rel & 0xFFFF);
+            PutU16(at + 14, (int)((uint)rel >> 16));
+        }
+
+        int NewSegment(int chunk, (int Id, int A, int B)[] props)
+        {
+            var s = new byte[16];
+            s[0] = (byte)props.Length;
+            for (int k = 0; k < props.Length; k++)
+            {
+                s[1 + k] = (byte)props[k].Id;
+                BinaryPrimitives.WriteUInt16LittleEndian(s.AsSpan(4 + 4 * k), (ushort)props[k].A);
+                BinaryPrimitives.WriteUInt16LittleEndian(s.AsSpan(6 + 4 * k), (ushort)props[k].B);
+            }
+            int at = Allocate(chunk, 16);
+            Put(at, s);
+            CountProperties(at, +1);
+            return at;
+        }
+
+        /// <summary>
+        /// Takes a property off an object: the later places of its segment move down one. A first segment left empty is
+        /// let go (the object then has no properties); an emptied segment further down the chain stays, holding nothing.
+        /// Undoable inside an edit.
+        /// </summary>
+        public void RemoveProperty(MapObject o, ObjectProperty p)
+        {
+            if (Kind != ObjectFileKind.Nonfixed) throw new InvalidOperationException("Only nonfixed objects have properties");
+            if (p.SegmentOffset <= 0 || DataStart + (long)p.SegmentOffset + 16 > Data.Length || (uint)p.Place > 2)
+                throw new ArgumentException("The property is not in this file", nameof(p));
+            int at = DataStart + p.SegmentOffset;
+            if (Data[at + 1 + p.Place] != p.Id) throw new InvalidOperationException("The property changed since it was read");
+            if (p.Id == PropertyNames.NextPropertyPointer || p.Id == PropertyNames.Contents)
+                throw new InvalidOperationException($"{p.Name} holds a file offset and is not removed by hand");
+            if (byOffset.TryGetValue(o.FileOffset, out var listed) && listed == o) Touch(o);
+            int count = Math.Min(3, (int)Data[at]);
+            var seg = Data.AsSpan(at, 16).ToArray();
+            for (int k = p.Place; k < count - 1; k++)
+            {
+                seg[1 + k] = seg[2 + k];
+                Array.Copy(seg, 8 + 4 * k, seg, 4 + 4 * k, 4);
+            }
+            seg[count] = 0;
+            Array.Clear(seg, 4 + 4 * (count - 1), 4);
+            seg[0] = (byte)(count - 1);
+            Put(at, seg);
+            if (count - 1 == 0 && p.SegmentOffset == o.PropertyOffset)
+            {
+                PutU32(o.FileOffset + 0x1C, U32(o.FileOffset + 0x1C) & 1u);
+                Put(at, new byte[16]);
+                CountProperties(at, -1);
+            }
         }
 
         /// <summary>Sets a property's two parameters where they are stored (undoable inside an edit).</summary>

@@ -64,6 +64,9 @@ uniform int uTileGrid;
 uniform ivec2 uHover;         // point under the mouse, -1 for none
 uniform ivec2 uSelected;
 uniform vec3 uBrush;          // terrain brush: centre (x, row) and radius in points; radius 0 for none
+uniform vec4 uRegion;         // a prefab's footprint: first and last point (x, row); x1 < x0 for none
+uniform float uRegionMargin;  // its edge, in points, drawn as a second outline inside
+uniform int uRegionNorth;     // which side its north (as copied) faces now: 0 north, 1 west, 2 south, 3 east
 out vec4 fragColour;
 
 vec3 hashColour(uint n)
@@ -125,6 +128,21 @@ void main()
         vec2 f = fract(vPoint / 16.0) * 16.0;
         vec2 w = fwidth(vPoint) * 1.2;
         if (f.x < w.x || f.y < w.y) col = mix(col, vec3(0.0), 0.45);
+    }
+    if (uRegion.z >= uRegion.x && all(greaterThanEqual(vPoint, uRegion.xy)) && all(lessThanEqual(vPoint, uRegion.zw)))
+    {
+        // a prefab's footprint: its outline, its edge's inner outline, and its north side (as copied) in orange
+        vec3 cyan = vec3(0.2, 0.9, 1.0);
+        vec2 fw = fwidth(vPoint) * 1.5;
+        vec2 lo = vPoint - uRegion.xy, hi = uRegion.zw - vPoint;
+        vec2 d = min(lo, hi);
+        float north = uRegionNorth == 0 ? hi.y : uRegionNorth == 1 ? lo.x : uRegionNorth == 2 ? lo.y : hi.x;
+        float nfw = uRegionNorth == 0 || uRegionNorth == 2 ? fw.y : fw.x;
+        float mg = uRegionMargin;
+        if (north < nfw * 2.0) col = mix(col, vec3(1.0, 0.55, 0.1), 0.95);
+        else if (d.x < fw.x || d.y < fw.y) col = mix(col, cyan, 0.9);
+        else if (mg > 0.0 && ((abs(d.x - mg) < fw.x && d.y >= mg) || (abs(d.y - mg) < fw.y && d.x >= mg))) col = mix(col, cyan, 0.55);
+        else col = mix(col, cyan, d.x < mg || d.y < mg ? 0.06 : 0.14);
     }
     if (uBrush.z > 0.0)
     {

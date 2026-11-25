@@ -6,5 +6,7 @@
     <FluentTheme />
     <!-- the classic, compact look with its Light and Dark schemes -->
     <StyleInclude Source="/Look.axaml" />
+    <!-- the trigger script editor (AvaloniaEdit) -->
+    <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
   </Application.Styles>
 </Application>

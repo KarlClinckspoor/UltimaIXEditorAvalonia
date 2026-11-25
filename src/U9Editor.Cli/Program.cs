@@ -28,9 +28,20 @@ namespace U9Editor.Cli
                     case "model-info" when args.Length == 2: return ModelInfo(args[1]);
                     case "model-import" when args.Length == 4: return ModelImport(args[1], int.Parse(args[2]), args[3]);
                     case "orbit-scene" when args.Length == 12 || args.Length == 13: return OrbitScene(args);
+                    case "prefab-copy" when args.Length >= 8: return PrefabCopy(args);
+                    case "prefab-paste" when args.Length >= 6: return PrefabPaste(args);
                     case "camera-point" when args.Length >= 9: return CameraPointSet(args);
                     case "scenes" when args.Length == 3: return Scenes(args[1], int.Parse(args[2]));
+                    case "script" when args.Length == 3: return ScriptPrint(args[1], int.Parse(args[2]));
+                    case "script-uses" when args.Length >= 3: return ScriptUses.Run(args[1], args[2], args.Skip(3).ToArray());
+                    case "script-compile" when args.Length == 4: return ScriptCompile(args[1], int.Parse(args[2]), args[3]);
                     case "objects" when args.Length >= 3: return Objects(args[1], int.Parse(args[2]), args.Skip(3).ToArray());
+                    case "speech-wav" when args.Length == 4: return SpeechWav(args[1], int.Parse(args[2]), args[3]);
+                    case "line" when args.Length == 3: return LinePrint(args[1], int.Parse(args[2]));
+                    case "combat" when args.Length == 2: return CombatCommands.Print(args[1]);
+                    case "combat-set" when args.Length >= 3: return CombatCommands.Set(args[1], args.Skip(2));
+                    case "combat-exe" when args.Length == 3: return CombatCommands.WriteExe(args[1], args[2]);
+                    case "combat-balance" when args.Length >= 2: return CombatCommands.Balance(args[1], args.Skip(2).ToArray());
                     default: return Usage();
                 }
             }
@@ -39,6 +50,27 @@ namespace U9Editor.Cli
                 Console.Error.WriteLine("error: " + e.Message);
                 return 1;
             }
+        }
+
+        /// <summary>A conversation line's voice clip (sound/Speech.flx, EA MicroTalk) as a 16-bit WAV.</summary>
+        static int SpeechWav(string gamedata, int line, string output)
+        {
+            string path = U9.Mods.GamePaths.Find(gamedata, "sound/speech.flx") ?? throw new IOException("no sound/Speech.flx in " + gamedata);
+            var rec = U9.Formats.Text.SpeechTable.ReadRecord(path, line) ?? throw new IOException($"line {line} has no voice clip");
+            var clip = U9.Formats.Text.SpeechClip.Parse(line, rec, rec.Length).Value;
+            if (clip.Codec != 2) throw new InvalidDataException($"clip codec {clip.Codec}: only 2 (EA MicroTalk) is decoded");
+            var samples = U9.Formats.Text.MicroTalk.Decode(rec, U9.Formats.Text.SpeechClip.HeaderSize);
+            File.WriteAllBytes(output, U9.Formats.Text.MicroTalk.Wav(samples, clip.Rate));
+            Console.WriteLine($"{clip.Name}: {samples.Length} samples, {samples.Length / (double)clip.Rate:0.00} s -> {output}");
+            return 0;
+        }
+
+        /// <summary>A text.flx line with its clip.</summary>
+        static int LinePrint(string gamedata, int line)
+        {
+            var t = U9.Formats.Text.TextTable.Load(U9.Mods.GamePaths.Find(gamedata, "static/text.flx") ?? throw new IOException("no static/text.flx"));
+            Console.WriteLine($"{line}: {t[line]}");
+            return 0;
         }
 
         static int Usage()
@@ -63,11 +95,39 @@ namespace U9Editor.Cli
                                              and with --props their property segments
   u9 scenes <gamedata> <map>                 the map's in-engine scenes: camera points (type 2218) and the moves
                                              the trigger scripts chain between them
+  u9 combat <gamedata>                       u9.exe's combat tables (weapons, armour, natural attacks, damage
+                                             multipliers) with the pending patches, and those patches
+  u9 combat-set <gamedata> <what:which.field=value>...
+                                             change combat stats and save: weapon:TYPE.min|max|reach|radius,
+                                             armour:TYPE.min|max, natural:ROW.min|max|types, mult:KIND.fire (or a bit
+                                             number), npc:RECORD.hp|defence|kind|mana. u9.exe changes go to
+                                             u9.exe.patches.json (never into u9.exe); NPC.FLX keeps NPC.FLX.orig
+  u9 combat-exe <gamedata> <out.exe>         u9.exe with the pending patches, written elsewhere
+  u9 combat-balance <gamedata> [--weapon TYPE] [--armour 0-6] [--str 0-3] [--hp N] [--shield TYPE]
+                                             mean hits for the Avatar to kill each fighter, and for each to kill
+                                             the Avatar
+  u9 script <gamedata> <slot>               a trigger script in the trigger language (docs/trigger-language.md)
+  u9 script-uses <gamedata> <op> [--map N] [--max N]
+                                             the scripts that use a command (op in hex, e.g. 3E), shortest first,
+                                             with the objects that run them: map, file offset, type, position,
+                                             link and which of their four scripts it is, and the tp and run
+                                             commands that go there and run it with tools/u9mon.py
+  u9 script-compile <gamedata> <slot> <file> compile the file into that script slot and write static/TRIGGERS.FLX
+                                             (first time keeping .orig); errors and warnings go to stderr
   u9 camera-point <gamedata> <map> <link> <x> <row> <z> <heading> <pitch> [distance]
                                              put a camera point (type 2218, by link) where a camera should be: the
                                              point looked at (point x, row; z in object units), heading clockwise
                                              from north, pitch down, distance in object units; writes
                                              runtime/nonfixed.N (first time keeping .orig)
+  u9 prefab-copy <gamedata> <map> <x0> <row0> <x1> <row1> <out.u9prefab> [--margin n] [--no-ground]
+                                             every object in that rectangle of points and the
+                                             ground under it (n points round, default 3) as a
+                                             prefab file
+  u9 prefab-paste <gamedata> <map> <x> <row> <in.u9prefab> [--turn k] [--ground none|heights|textures]
+                  [--keep-heights] [--no-blend] [--keep-links] [--share-scripts] [--clear] [--together]
+                                             paste it with its first point at (x, row), k
+                                             quarter turns counter-clockwise; writes the map's
+                                             files and TRIGGERS.FLX (first time keeping .orig)
   u9 orbit-scene <gamedata> <map> <x> <row> <z> <radius> <height> <points> <seconds> <zone x> <zone row> [<zone z>]
                                              a scene circling the point (x, row; z object units) at radius points
                                              and height units above it, started by a new trigger zone; writes
@@ -161,6 +221,42 @@ namespace U9Editor.Cli
             return 0;
         }
 
+        /// <summary>The trigger language's names: the game's, the shipped names file, the editor user's names file.</summary>
+        internal static (U9.Formats.Triggers.TriggerScripts Scripts, U9.Formats.Triggers.Language.TriggerNames Names) ScriptSetup(string gamedata)
+        {
+            var game = GameFolder.TryOpen(gamedata) ?? throw new IOException("not a game folder: " + gamedata);
+            var opt = new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive };
+            string F(string n) => Directory.EnumerateFiles(game.StaticFolder, n, opt).FirstOrDefault() ?? throw new IOException($"no {n} in {game.StaticFolder}");
+            var names = U9.Formats.Triggers.Language.TriggerNames.Build(
+                U9.Formats.Objects.TypeNames.Load(F("typename.flx")), U9.Formats.Models.TypeTable.Load(F("types.dat")),
+                Path.Combine(AppContext.BaseDirectory, "names", "trigger-names.txt"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "U9Editor", "trigger-names.txt"));
+            foreach (var p in names.Problems) Console.Error.WriteLine("names: " + p);
+            return (U9.Formats.Triggers.TriggerScripts.Load(F("triggers.flx")), names);
+        }
+
+        static int ScriptPrint(string gamedata, int slot)
+        {
+            var (scripts, names) = ScriptSetup(gamedata);
+            if (!scripts.IsUsed(slot)) { Console.Error.WriteLine($"script {slot} is not used"); return 1; }
+            Console.Write(U9.Formats.Triggers.Language.TriggerPrinter.Print(scripts[slot], names, slot));
+            return 0;
+        }
+
+        static int ScriptCompile(string gamedata, int slot, string file)
+        {
+            var (scripts, names) = ScriptSetup(gamedata);
+            var r = U9.Formats.Triggers.Language.TriggerCompiler.Compile(File.ReadAllText(file), names, slot);
+            foreach (var d in r.Diagnostics) Console.Error.WriteLine($"{file}:{d}");
+            if (!r.Ok) return 1;
+            scripts.Set(slot, r.Ops);
+            string backup = scripts.Path + ".orig";
+            if (!File.Exists(backup)) File.Copy(scripts.Path, backup);
+            scripts.Save();
+            Console.WriteLine($"script {slot}: {r.Ops.Length - 1} ops written to {scripts.Path}");
+            return 0;
+        }
+
         static int OrbitScene(string[] a)
         {
             var ci = System.Globalization.CultureInfo.InvariantCulture;
@@ -188,6 +284,78 @@ namespace U9Editor.Cli
             var scene = Cutscenes.Find(ed.Nonfixed, ed.Scripts, space).First(p => p.Starter == made.Source);
             Console.WriteLine($"zone at ({zx / 128.0:0.##}, {zy / 128.0:0.##}) z {gz}: {scene}");
             foreach (var s in scene.Shots) Console.WriteLine($"   {s}   {s.Point.Pose}");
+            foreach (var w in ed.Save(fxPath, nfPath)) Console.WriteLine("wrote " + w);
+            return 0;
+        }
+
+        /// <summary>A map's editor from the game folder, for the commands that edit and save: editor, fixed and nonfixed paths.</summary>
+        static (MapEditor Editor, string Fixed, string Nonfixed) OpenMap(GameFolder game, int map)
+        {
+            var opt = new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive };
+            string fxPath = Directory.EnumerateFiles(game.StaticFolder, "fixed." + map, opt).FirstOrDefault();
+            string nfPath = Directory.EnumerateFiles(Path.Combine(game.Root, "runtime"), "nonfixed." + map, opt).FirstOrDefault();
+            string tPath = Directory.EnumerateFiles(game.StaticFolder, "terrain." + map, opt).FirstOrDefault() ?? throw new IOException($"map {map} has no terrain file");
+            var t = U9.Formats.Terrain.TerrainMap.Load(tPath);
+            var space = new MapSpace(t.Width, t.Height);
+            var fx = fxPath != null ? U9.Formats.Objects.ObjectMap.Load(fxPath, U9.Formats.Objects.ObjectFileKind.Fixed) : null;
+            var nf = nfPath != null ? U9.Formats.Objects.ObjectMap.Load(nfPath, U9.Formats.Objects.ObjectFileKind.Nonfixed) : null;
+            string namesPath = Directory.EnumerateFiles(game.StaticFolder, "typename.flx", opt).FirstOrDefault();
+            var names = namesPath != null ? U9.Formats.Objects.TypeNames.Load(namesPath) : null;
+            var ed = new MapEditor(map, fx, nf, SceneObjects.Build(fx, nf, space, names), space, new TerrainRaster(t)) { Terrain = t, TerrainPath = tPath };
+            string trig = Directory.EnumerateFiles(game.StaticFolder, "triggers.flx", opt).FirstOrDefault();
+            if (trig != null) ed.Scripts = U9.Formats.Triggers.TriggerScripts.Load(trig);
+            return (ed, fxPath, nfPath);
+        }
+
+        static int PrefabCopy(string[] a)
+        {
+            var game = GameFolder.TryOpen(a[1]) ?? throw new IOException("not a game folder: " + a[1]);
+            int map = int.Parse(a[2]), x0 = int.Parse(a[3]), y0 = int.Parse(a[4]), x1 = int.Parse(a[5]), y1 = int.Parse(a[6]);
+            int margin = 3; bool ground = true;
+            for (int i = 8; i < a.Length; i++)
+            {
+                if (a[i] == "--margin" && i + 1 < a.Length) margin = int.Parse(a[++i]);
+                else if (a[i] == "--no-ground") ground = false;
+                else throw new ArgumentException("unknown option " + a[i]);
+            }
+            var (ed, _, _) = OpenMap(game, map);
+            var inside = ed.Objects.All.Where(o => o.Source.MapX >= x0 * 128 && o.Source.MapX <= x1 * 128 && o.Source.MapY >= y0 * 128 && o.Source.MapY <= y1 * 128).ToList();
+            var p = Prefab.Copy(ed, inside, margin, ground);
+            p.Save(a[7]);
+            Console.WriteLine($"{p.Name}: {p.Describe()} -> {a[7]}");
+            return 0;
+        }
+
+        static int PrefabPaste(string[] a)
+        {
+            var game = GameFolder.TryOpen(a[1]) ?? throw new IOException("not a game folder: " + a[1]);
+            int map = int.Parse(a[2]), x = int.Parse(a[3]), row = int.Parse(a[4]), turns = 0;
+            var opt = new PasteOptions();
+            for (int i = 6; i < a.Length; i++)
+            {
+                switch (a[i])
+                {
+                    case "--turn" when i + 1 < a.Length: turns = int.Parse(a[++i]); break;
+                    case "--ground" when i + 1 < a.Length:
+                        opt.Ground = a[++i] switch { "none" => PrefabGround.None, "heights" => PrefabGround.Heights, "textures" => PrefabGround.HeightsAndTextures, var v => throw new ArgumentException("--ground none|heights|textures, not " + v) };
+                        break;
+                    case "--keep-heights": opt.FitHeights = false; break;
+                    case "--no-blend": opt.BlendEdge = false; break;
+                    case "--keep-links": opt.NewLinks = false; break;
+                    case "--share-scripts": opt.CopyScripts = false; break;
+                    case "--clear": opt.ClearArea = true; break;
+                    case "--together": opt.ObjectsFollowGround = false; break;
+                    default: throw new ArgumentException("unknown option " + a[i]);
+                }
+            }
+            var p = Prefab.Load(a[5]).Turned(turns);
+            var (ed, fxPath, nfPath) = OpenMap(game, map);
+            var r = ed.PastePrefab(p, x, row, opt);
+            Console.WriteLine($"pasted {r.Objects.Count} objects of {p.Name} at ({x}, {row}), turned {turns * 90}°" +
+                              (r.GroundPasted ? $", ground fitted by {r.HeightOffset}" : "") + (r.LinkShift != 0 ? $", links +{r.LinkShift}" : "") +
+                              (r.Slots.Count > 0 ? ", scripts " + string.Join(", ", r.Slots.Select(kv => $"{kv.Key}->{kv.Value}")) : "") +
+                              (r.Skipped > 0 ? $", {r.Skipped} left out" : "") + (r.Cleared > 0 ? $", {r.Cleared} cleared" : ""));
+            foreach (var n in r.Notes) Console.WriteLine("  " + n);
             foreach (var w in ed.Save(fxPath, nfPath)) Console.WriteLine("wrote " + w);
             return 0;
         }
