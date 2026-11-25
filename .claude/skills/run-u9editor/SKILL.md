@@ -293,7 +293,12 @@ Add-Content $env:TEMP\u9cmds.txt "tp 9 64516,67498,2599"                        
 Add-Content $env:TEMP\u9cmds.txt "run 2121 3076 1962 2535 666 0"
 ```
 
-- **Commands:** `where`, `tp <map> x,y[,z] [yaw]`, `find <type> x y z link` and `run <type> x y z link which [label]`.
+- **Finding places:** `u9 script-places gamedata 3E 10 ... [--map N] [--b-mask FF00]` lists where commands run with
+  nobody using anything. It starts from trigger zones, puzzle timers, proximity objects and patrol markers, follows
+  `28` calls, and gives the globals to set first. The curated list for the unknown commands is
+  `analysis/script-tests/README.md` (private).
+- **Commands:** `where`, `global <n> [value]`, `tp <map> x,y[,z] [yaw]`, `find <type> x y z link` and
+  `run <type> x y z link which [label]`.
   They come from stdin or from lines appended to the `--commands` file, and run between frames on the game's thread.
   `x y z` for find and run are the record's in-chunk values, which `script-uses` prints ready to paste.
 - **Checked on 2026-11-25:** `where`, a `tp` from the arena (map 91) to Britannia, and `run` of script 1814 (command

@@ -33,6 +33,7 @@ namespace U9Editor.Cli
                     case "camera-point" when args.Length >= 9: return CameraPointSet(args);
                     case "scenes" when args.Length == 3: return Scenes(args[1], int.Parse(args[2]));
                     case "script" when args.Length == 3: return ScriptPrint(args[1], int.Parse(args[2]));
+                    case "script-places" when args.Length >= 3: return ScriptPlaces.Run(args[1], args.Skip(2).ToArray());
                     case "script-uses" when args.Length >= 3: return ScriptUses.Run(args[1], args[2], args.Skip(3).ToArray());
                     case "script-compile" when args.Length == 4: return ScriptCompile(args[1], int.Parse(args[2]), args[3]);
                     case "objects" when args.Length >= 3: return Objects(args[1], int.Parse(args[2]), args.Skip(3).ToArray());
@@ -112,6 +113,10 @@ namespace U9Editor.Cli
                                              with the objects that run them: map, file offset, type, position,
                                              link and which of their four scripts it is, and the tp and run
                                              commands that go there and run it with tools/u9mon.py
+  u9 script-places <gamedata> <op> [<op>...] [--map N] [--max N] [--b-mask HEX]
+                                             where those commands run with nobody using anything: from trigger
+                                             zones, proximity objects and puzzle timers, through 0x28 calls,
+                                             with the global values to set first and the other tests on the way
   u9 script-compile <gamedata> <slot> <file> compile the file into that script slot and write static/TRIGGERS.FLX
                                              (first time keeping .orig); errors and warnings go to stderr
   u9 camera-point <gamedata> <map> <link> <x> <row> <z> <heading> <pitch> [distance]

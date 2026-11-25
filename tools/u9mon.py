@@ -28,7 +28,8 @@ They run between two frames (at the end of Game_FrameUpdate 0x49F610), on the ga
   run <type> <x> <y> <z> <link> <which> [label]
                                    run one of that object's four scripts (0, 1 OO Trigger A/B; 2, 3 SF Trigger A/B)
                                    through Trigger_RunScript, from entry label `label` (0: the start)
-  where                            the current map and the Avatar's position
+  where                            the current map
+  global <n> [value]               read (or set) script global n (0..511 used): the byte table at [0x1333E64]
 Caller names come from analysis/u9exe/index/functions.tsv when that private index is present.
 Ctrl+C stops and detaches; the game keeps running.
 """
@@ -243,7 +244,15 @@ function findObject(type, x, y, z, link) {
     return hits;
 }
 
+const GLOBALS = ptr('0x1333E64');                  // the scripts' globals: a byte table (0D sets, 0E/5B test)
 const commands = {
+    global(n, value) {
+        const t = GLOBALS.readPointer();
+        if (t.isNull() || n < 0 || n >= 0x400) return { error: 'no globals table, or n outside 0..1023' };
+        const before = t.add(n).readU8();
+        if (value !== null && value !== undefined) t.add(n).writeU8(value);
+        return { global: n, was: before, now: t.add(n).readU8() };
+    },
     where() {
         const w = WORLD.readPointer();
         return { map: currentMap(), world: w.toString() };
@@ -399,6 +408,8 @@ def parse_command(line):
         return "run", v[:6] + [v[6] if len(v) > 6 else 0]
     if name == "where":
         return "where", []
+    if name == "global":
+        return "global", [int(a[0]), int(a[1]) if len(a) > 1 else None]
     raise ValueError(f"unknown command {name}")
 
 
