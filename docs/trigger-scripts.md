@@ -133,7 +133,7 @@ of the way each run and snaps within 0.05.
 | 34 | NPC manager call **?** | |
 | 37 | play movie | movie B: 0 `Column`, 1 `UAStandinLogoTreatment`, 2 `Intro`, 3 `Ambush`, 4 `Samhayne`, 5 `Raven`, 6 `armageddon`, 7 `goodEndgame`, 8 `maelstrom`, 9 `moongate`, 10 `prison`, 11 `pyros`, 12 `skaraBrae`; SF1 / SF2 run when it ends |
 | 3A | if clock | minutes since midnight vs B & 0xFFF; jump B >> 13 |
-| 3E | **?** | 0x5B7220(B) on the current character's +0xD8 structure |
+| 3E | **?** | 0x5B7220(B) on the current character's +0xD8 structure. Seen live with B = 0, 1, 6, 10, always returning 1. Map 201 ("Dave's Sound Test") has a row of zones running 3E with B = 0, 1, 2, 3, which suggests a sound or music setting |
 | 3F | set / add clock | (B & 0x7FFF) × 9000; the top bit adds; clamps at 23:59 |
 | 4B | if the Avatar carries | the Avatar's inventory, containers included (see "What A means"); the item's Quantity (0 when absent) vs B & 0xFFF; no range |
 | 52 | set Avatar +0x3A (mana **?**) | B & 0xFFF, capped by +0x3C; B & 0x3000 picks a variant |
@@ -158,7 +158,7 @@ Property names are the editor's (`ObjectProperties.cs`).
 | 02 | set link | B; on the trigger it also changes the script's link |
 | 03 | set property | property `[Quantity, Hit Points, Owner, Hint Level][B & 3]` = B >> 4 (table 0x793138; the shipped scripts use Hit Points and Hint Level) |
 | 04 | set type | B |
-| 05 | **?** | 0x4CD290(object, B) |
+| 05 | set model | the object's model (record +0x18) = B, through 0x4CD290 (`__thiscall(store, object, B, 0)`). Checked in the running game: Deceit 1's lever script 244 switched a Button's model 1222 → 1239 → 1222 |
 | 06 07 08 | set / clear / **toggle** flags | B's bits mapped to object flags (below); 08 XORs them |
 | 09 0B, 0A 0C | move / teleport **?** | 0x54F350, 0x54EC00 |
 | 0F | effect **?** | effect B & 0x3F, B & 0x40, three 3-bit fields; uses a class 1134 marker |
@@ -212,6 +212,10 @@ instance", 0x40000 is on markers and zones).
 
 - Names of the commands marked **?**; the meaning of object flags 0x100, 0x4000, 0x40000; 0x1F's B high
   byte; 0x37's success test; the Tint channel order.
-- Whether a trigger zone runs its script once on entry or every frame while the Avatar is inside.
+- Whether a trigger zone runs its script once on entry or every frame while the Avatar is inside. Seen so far: a
+  zone (class 1111) runs its OO A as the Avatar arrives, even by teleport. The call comes from class 1111's usecode
+  event 4 handler (0x632C40, the call returning to 0x632EE2). Zones on Earth (script 3132) and on map 201 (script
+  1045) each ran once in the 10 s that followed, not every frame. A teleport 64 units above a zone that floats high
+  (Britannia's at z 5700) did not set it off.
 - The editor's `TriggerScripts.Describe` adds the link offset to 0x11, which the game ignores: fix with the
   language work.

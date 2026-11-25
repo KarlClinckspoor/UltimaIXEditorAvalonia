@@ -63,7 +63,7 @@ function objInfo(p) {
     try {
         if (p.isNull()) return null;
         const page = p.and(ptr('0xFFFFF000'));
-        return { addr: p.toString(), type: p.add(0x0A).readU16(), link: (p.add(0x14).readU8() & 1) ? 0 : p.add(0x1A).readU16(),
+        return { addr: p.toString(), type: p.add(0x0A).readU16(), model: p.add(0x18).readU16(), link: (p.add(0x14).readU8() & 1) ? 0 : p.add(0x1A).readU16(),
                  x: page.add(0x0C).readS32() + p.add(4).readU16(), y: page.add(0x10).readS32() + p.add(6).readU16(), z: p.add(8).readU16() };
     } catch (e) { return null; }
 }
@@ -343,7 +343,7 @@ SPELLS = {10: "Lightning Bolt", 15: "Fireball", 21: "Summon Undead", 47: "big st
 def obj(o):
     if not o:
         return "-"
-    return f"type {o['type']} link {o['link']} at {o['x']},{o['y']},{o['z']}"
+    return f"type {o['type']} link {o['link']} model {o.get('model', '?')} at {o['x']},{o['y']},{o['z']}"
 
 
 def describe(m, name):
