@@ -6,6 +6,10 @@ It reads and writes the game's own files, so changes show up in the real game.
 > Fan project, not affiliated with or endorsed by Electronic Arts or Origin Systems. Ultima is a trademark of
 > Electronic Arts. No game files are included: you need your own copy of the game (the GOG release works).
 
+![Castle British on Britannia in the editor, with an object selected and the map links listed](docs/images/main.jpg)
+
+More pictures: [Screenshots](#screenshots).
+
 ## What it does
 
 - **3D view of every map**: terrain with its textures and transitions, water, objects with their models,
@@ -13,6 +17,9 @@ It reads and writes the game's own files, so changes show up in the real game.
   view picks what a drag does (Select, Move, Rotate, Place, Terrain), so looking round never moves anything.
 - **Objects**: select, move (keeping height above the ground), turn, raise, copy, delete and place new ones of
   any of the game's types, with undo and redo. Saves `fixed.N` and `nonfixed.N`.
+- **Contents and search**: what an object carries (Contents tab): book texts, what containers hold, NPC and object
+  properties by the game's own names, and the type's `TYPES.DAT` values. Find objects by name, type number, id or
+  link on one map or all of them, jump to where a link leads, and keep bookmarks.
 - **Map links**: retarget a door or cave to another map and arrival point, add new links and arrivals. Saves
   the trigger scripts in `TRIGGERS.FLX`.
 - **Terrain**: brushes to raise, lower, smooth, flatten, roughen, paint textures (with the map's own blended
@@ -21,6 +28,10 @@ It reads and writes the game's own files, so changes show up in the real game.
   in the 3D view; change a move's duration and style, put a camera point where the view is, edit any script as
   text, and make new scenes: a trigger zone and camera points from the view, move by move, or a camera circling an
   object. Saves `TRIGGERS.FLX` and `nonfixed.N`.
+- **Trigger scripts** (Edit > Trigger scripts, Ctrl+T): the scripts behind doors, levers, map links and scenes, read
+  and written in a C-like language ([docs/trigger-language.md](docs/trigger-language.md)), with a live check,
+  completion, find and replace, renaming, and lists of globals and symbols. What each script command does:
+  [docs/trigger-scripts.md](docs/trigger-scripts.md).
 - **Prefabs**: copy a group of objects with the ground under it and paste it elsewhere, on the same map or another,
   turned in quarter turns, its edge blended into the ground there. Objects come whole (properties, chained
   properties, what containers hold), with new link numbers and copies of the scripts they run. Prefabs can be saved
@@ -49,11 +60,30 @@ It reads and writes the game's own files, so changes show up in the real game.
 - **Formats**: readers and writers for FLX archives, terrain, object files, types, models and bitmaps, tested
   for byte-identical round trips over every shipped file.
 - Saving keeps each original file beside it as `.orig` the first time.
+- **Testing in the game** (`tools/`): `arena-test.ps1` starts a new game on a small test map of your own (creatures
+  set against each other, optional fly and invulnerability cheats) and puts the game folder back afterwards;
+  `u9mon.py` watches the running game with Frida: which trigger scripts run and what they change, where the Avatar
+  is, teleports, and running a script on demand. Nothing is written to the game's files.
 
 Checked in the game: a retargeted cave link takes the Avatar to the new arrival, a raised hill puts him on
 its top at the height the editor reckons, objects that followed the ground sit on it, and painted textures blend
 as in the editor. The opening scene on Earth plays in the game as the editor shows it, and a camera point moved in
 the editor changes it there.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Britannia from above, with link zones and arrival points marked](docs/images/topdown.jpg) | ![The Terrain tab over a river bank and bridge](docs/images/terrain.jpg) |
+| **Top-down map** of Britannia: Lord British's castle and Britain, with map-link zones (yellow) and arrival points (violet). | **Terrain**: brushes, texture palette and water height, over the bridge west of Britain. |
+| ![The opening scene in the Avatar's house, mid-move](docs/images/scene.jpg) | ![A wall of Shame's pieces built on the Kit tab](docs/images/kit.jpg) |
+| **Scenes**: the opening scene on Earth stopped 9 s in, with its camera moves listed. | **Kit building**: a wall of the Shame dungeon's own pieces, corners closed, built with clicks. |
+| ![A prefab from Moonglow about to be pasted onto another map](docs/images/prefab.jpg) | ![The trigger script editor with the symbols list](docs/images/scripts.jpg) |
+| **Prefabs**: 23 objects and their ground copied from Moonglow, its outline showing where it will land on another map, turned a quarter. | **Trigger scripts** as text, checked as you type, with the script's labels and classes beside it. |
+| ![The combat balance window's hits-to-kill table](docs/images/combat.jpg) | ![The dialogue editor on a line with a character the game can't show](docs/images/dialogue.jpg) |
+| **Combat balance**: hits for the Avatar in plate to kill each creature with each weapon, from the game's own tables and rules. | **Dialogue**: every line with its voice clip, and a live check of how the game will show it (here, a character it can't draw). |
+| ![The U9 Mod Manager with two mods applied](docs/images/modmanager.png) | |
+| **U9 Mod Manager**: two mods applied together, one patching weapons in `u9-mod.exe`, the other changing `NPC.FLX`; `u9.exe` stays untouched. | |
 
 ## Status and roadmap
 
