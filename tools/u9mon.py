@@ -17,7 +17,9 @@ loads at 0x400000):
           slot, the entry label), every op as it runs (loop head 0x54F9C3: op, A, B, and the flag it left), each
           command sent to an object (0x5510A0), and the helpers behind the commands still marked ? in
           docs/trigger-scripts.md, while a script runs: 3E 0x5B7220, 05 0x4CD290, 10 0x50C2D0, 2B 0x576E50,
-          30 0x4BDC60 (registers, stack arguments, return value)
+          30 0x4BDC60, 09/0B 0x54F350, 0A/0C 0x54EC00 (registers, stack arguments, return value). For a run asked
+          for with `run`: what changed (16-bit words of the object records it touched, the Avatar's NPC record,
+          globals by number) at its end and 2 and 6 seconds later
 
 Commands (typed on stdin, or appended as lines to the --commands file; `u9 script-uses` prints ready-made ones).
 They run between two frames (at the end of Game_FrameUpdate 0x49F610), on the game's own thread:
@@ -150,6 +152,33 @@ const getProp = new NativeFunction(ptr('0x4BF010'), 'uint32', ['pointer', 'uint8
 const scriptStack = [];                             // runs in progress (scripts can nest through 0x28 and others)
 const seenRuns = {};                                // run signature -> times seen: repeats are not sent again
 let forceRun = false;                               // the next run was asked for with `run`: always send it
+// What a forced run changed: the bytes of its object, of every object a command was sent to, of the Avatar's NPC
+// record (record 0) and of the globals table, compared at the end of the run and again 2 and 6 seconds later.
+let watch = null;                                   // { what: {key: [ptr, size, bytes]} } while a forced run is going
+function snap(key, p, size) {
+    if (!watch || watch.what[key] || p.isNull()) return;
+    try { watch.what[key] = [p, size, new Uint8Array(p.readByteArray(size))]; } catch (e) { }
+}
+function snapObject(p) { const o = objInfo(p); if (o) snap('object ' + o.type + ' link ' + o.link + ' @' + o.addr, p, 0x20); }
+function diffs(w) {
+    const out = [];
+    for (const key in w.what) {
+        const [p, size, before] = w.what[key];
+        let now;
+        try { now = new Uint8Array(p.readByteArray(size)); } catch (e) { continue; }
+        const words = [];
+        for (let i = 0; i < size; i += 2) {
+            const a = before[i] | (before[i + 1] << 8), b = now[i] | (now[i + 1] << 8);
+            if (a !== b) words.push('+' + i.toString(16) + ' ' + a + '->' + b);
+        }
+        if (key === 'globals') {                    // bytes, by global number
+            words.length = 0;
+            for (let i = 0; i < size; i++) if (before[i] !== now[i]) words.push('g' + i + ' ' + before[i] + '->' + now[i]);
+        }
+        if (words.length) out.push(key + ': ' + words.join(', '));
+    }
+    return out;
+}
 function scriptDepth() { return scriptStack.length; }
 function top() { return scriptStack[scriptStack.length - 1]; }
 function flushOp(s) {
@@ -169,6 +198,13 @@ if (only.has('script')) {
                 }
             } catch (e) { }
             this.entry = { depth: scriptStack.length, slot: slot, op: null, force: forceRun, events: [] };
+            if (forceRun) {
+                watch = { what: {} };
+                snapObject(obj);
+                snap('avatar record', table(), REC);
+                const g = GLOBALS.readPointer();
+                if (!g.isNull()) snap('globals', g, 0x400);
+            }
             forceRun = false;
             scriptStack.push(this.entry);
             this.entry.events.push({ ev: 'script', depth: this.entry.depth, slot: slot, which: which, label: label, obj: objInfo(obj), from: caller(this) });
@@ -178,6 +214,12 @@ if (only.has('script')) {
             flushOp(s);
             scriptStack.pop();
             s.events.push({ ev: 'script-end', depth: s.depth, slot: s.slot, flag: FLAG.readU32() });
+            if (s.force && watch) {
+                const w = watch;
+                watch = null;
+                s.events.push({ ev: 'changed', when: 'at the end', slot: s.slot, list: diffs(w) });
+                for (const ms of [2000, 6000]) setTimeout(() => send({ ev: 'changed', when: 'after ' + ms / 1000 + ' s', slot: s.slot, list: diffs(w) }), ms);
+            }
             const key = JSON.stringify(s.events.map(e => [e.ev, e.op, e.a, e.b, e.flag, e.cmd, e.ret, e.obj && e.obj.addr]));
             const n = seenRuns[key] = (seenRuns[key] || 0) + 1;
             if (s.force || n === 1) send({ ev: 'batch', events: s.events });
@@ -196,9 +238,11 @@ if (only.has('script')) {
         onEnter(args) {
             const s = top();
             if (s) s.events.push({ ev: 'send', depth: s.depth, cmd: args[0].toInt32() & 0xFF, obj: objInfo(args[2]) });
+            snapObject(args[2]);
         }
     });
-    const helpers = { '0x5B7220': '3E', '0x4CD290': '05', '0x50C2D0': '10', '0x576E50': '2B', '0x4BDC60': '30' };
+    const helpers = { '0x5B7220': '3E', '0x4CD290': '05', '0x50C2D0': '10', '0x576E50': '2B', '0x4BDC60': '30',
+                      '0x54F350': '09/0B', '0x54EC00': '0A/0C' };
     for (const a in helpers) Interceptor.attach(ptr(a), {
         onEnter(args) {
             this.on = scriptDepth() > 0;
@@ -245,6 +289,7 @@ function findObject(type, x, y, z, link) {
 }
 
 const GLOBALS = ptr('0x1333E64');                  // the scripts' globals: a byte table (0D sets, 0E/5B test)
+const found = {};                                  // `run` targets already found: "type x y z link" -> address
 const commands = {
     global(n, value) {
         const t = GLOBALS.readPointer();
@@ -274,10 +319,20 @@ const commands = {
     },
     find(type, x, y, z, link) {
         const hits = findObject(type, x, y, z, link);
+        if (hits.length === 1) found[[type, x, y, z, link].join(' ')] = hits[0];
         return { hits: hits.map(objInfo) };
     },
     run(type, x, y, z, link, which, label) {
-        const hits = findObject(type, x, y, z, link);
+        // the memory scan stalls the game for a moment: remember the address, and check it is still that object
+        const key = [type, x, y, z, link].join(' ');
+        let hits = null;
+        const known = found[key];
+        if (known) {
+            const o = objInfo(known);
+            if (o && o.type === type && o.link === link && o.z === z) hits = [known];
+        }
+        if (!hits) hits = findObject(type, x, y, z, link);
+        if (hits.length === 1) found[key] = hits[0];
         if (hits.length !== 1) return { error: hits.length + ' objects match (need exactly 1; is its map loaded?)', hits: hits.map(objInfo) };
         const state = STATE.readPointer();
         if (state.isNull()) return { error: 'no interpreter state' };
@@ -377,6 +432,8 @@ def describe(m, name):
                 f"{'  ecx = ' + obj(m['ecxObj']) if m.get('ecxObj') else ''}")
     if ev == "batch":
         return "\n".join(time.strftime("%H:%M:%S ") + describe(e, name) for e in m["events"])[9:]
+    if ev == "changed":
+        return f"CHANGED by {m['slot']} {m['when']}: " + ("; ".join(m["list"]) if m["list"] else "nothing")
     if ev == "repeat":
         return f"{ind}(script {m['slot']} ran again the same way: not shown again unless it changes)"
     if ev == "result":

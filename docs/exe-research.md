@@ -304,6 +304,38 @@ running game on 2026-11-25, on the test arena (map 91) and on Britannia, unless 
 - **Trigger_SendToObject 0x5510A0** is `__thiscall(state, command, op, object)`, called once for each matching object.
 - **Command 3E.** Script 1814, the one op `3E` with B = 6 on the Lord British teleporter, called 0x5B7220 with ecx = 6
   (B) and got 1 back. What 0x5B7220 changes is still open.
+- **Forcing commands (session 3, 2026-11-25, not yet audited).** One short Britannia script for each unknown command
+  was run with the monitor's `run`. Afterwards the monitor compared the 16-bit words of every record the script
+  touched, the Avatar's NPC record and the globals table. It compared them at the end of the run and again 2 and
+  6 seconds later. The commands named that way:
+  - 2A fires a missile (`FireMissleProcess`);
+  - 30 on an NPC starts a conversation;
+  - 49 and 59 cast spells;
+  - 50 deals damage, and its table at 0x7931A8 holds damage kinds, not sounds;
+  - 52 sets mana;
+  - 60 lets the Avatar breathe under water;
+  - 2E's `AbsItemMover` moves objects;
+  - 22 turns them.
+
+  The details are in `trigger-scripts.md`, marked †. 09, 0A, 0F, 20, 2B, 33, 34, 3C, 55, 5C, 5D and 63 changed
+  none of the watched bytes.
+- **Watched by a person (session 4).** One command per game, with a sound on the PC at each run, and a person
+  describing what they saw. These settled more commands:
+  - 0F spawns particle effects (effect 2 at the largest size: bubbles, more with each run);
+  - 2B stops an object's processes (an archery target stopped mid-slide);
+  - 09 and 0A conceal and reveal dormant objects (flags 0x40100), with fades;
+  - 20 plays the object's sound.
+
+  The decompile index names the helpers of 09 and 0A `Trigger_Move` (0x54F350) and `Trigger_Teleport` (0x54EC00),
+  but they conceal and reveal objects.
+- **What the comparisons also showed:**
+  - The Avatar's NPC record holds his position as u32s at +0x5C, +0x60 and +0x64 (object units), and his air at
+    +0xB4. The air falls under water from 100 and is refilled while command 60's switch is on.
+  - +0x3C is max mana. The word at +0x3E rose with it when command 52 raised the maximum.
+  - Bit 0x1000 of +0x4A is set during a conversation.
+  - A map object's record +0x10/+0x12 is its rotation: command 22 kept changing it on a windvane.
+  - +0x1C (u32) received a handle when command 2E started a mover on the object, and went back to 0 shortly after
+    command 10.
 - Many scripts run without the Avatar touching anything. Near Lord British's castle, script 3197 (a type 1094 trigger)
   ran every frame, called from 0x654010's class: `cmd 29` to a type 2913 object, then op 0x17. Eight other type
   1094 triggers ran on arrival.

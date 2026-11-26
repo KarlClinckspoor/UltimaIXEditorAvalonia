@@ -7,12 +7,16 @@
 #   powershell -ExecutionPolicy Bypass -File tools/arena-test.ps1 -Test 02-crab-vs-hound -Run
 #   powershell -ExecutionPolicy Bypass -File tools/arena-test.ps1 -Uninstall
 #
-# -Run starts u9.exe and waits: after -Minutes (default 5) it closes the game, and either way, once the game has
+# -Run starts u9.exe and waits: after -Minutes (default 2) it closes the game, and either way, once the game has
 # exited, it takes the arena out again (-Keep leaves it in for another run).
 #
 # Each test is a folder in analysis/arena-tests (local only: they hold game data; its README says what each one
 # does and how it went). Originals go to <game>/_arena_backup.
-param([string]$Test = "", [string]$Game = "", [switch]$Run, [double]$Minutes = 5, [switch]$Keep, [switch]$Uninstall)
+#
+# -Cheats binds the game's own developer cheats in default.kmp for the run (put back with the rest):
+# Ctrl+Y fly (through walls and ground), Ctrl+U invulnerable, Ctrl+H pass one hour.
+param([string]$Test = "", [string]$Game = "", [switch]$Run, [double]$Minutes = 2, [switch]$Keep, [switch]$Uninstall,
+      [switch]$Cheats)
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 if (-not $Game) { $Game = Join-Path $repo "gamedata" }
@@ -26,7 +30,7 @@ if (-not $Uninstall -and -not $Test) {
 }
 $stage = Join-Path $tests $Test
 $backup = Join-Path $Game "_arena_backup"
-$replaced = @("runtime\NPC.FLX", "static\sappear.flx", "sound\SFXTMPL.FLX", "Options.ini")
+$replaced = @("runtime\NPC.FLX", "static\sappear.flx", "sound\SFXTMPL.FLX", "Options.ini", "default.kmp")
 $added = @("static\terrain.91", "static\fixed.91", "runtime\nonfixed.91", "arena.ini")
 $latin1 = [Text.Encoding]::GetEncoding(28591)
 
@@ -54,7 +58,7 @@ if ($Uninstall) {
         Get-ChildItem -LiteralPath $sg -File | Where-Object { $before -notcontains $_.Name } | ForEach-Object { Remove-Item $_.FullName -Force; "removed savegame\$($_.Name)" }
     }
     Remove-Item $backup -Recurse -Force
-    "Arena taken out; NPC.FLX, sappear.flx, SFXTMPL.FLX and Options.ini are the originals again."
+    "Arena taken out; NPC.FLX, sappear.flx, SFXTMPL.FLX, Options.ini and default.kmp are the originals again."
     return
 }
 
@@ -88,6 +92,15 @@ for ($i = 0; $i -lt $lines.Length; $i++) {
 if (-not $done) { throw "Options.ini has no Start= line in [Game]; nothing changed there (run -Uninstall)." }
 [IO.File]::WriteAllText($opt, ($lines -join "`r`n"), $latin1)
 
+if ($Cheats) {
+    $kmpFile = Find-File "default.kmp"
+    $kmp = [IO.File]::ReadAllText($kmpFile, $latin1)
+    $binds = "ctrl+y = toggle_avatar_fly`r`nctrl+u = toggle_avatar_invulnerable`r`nctrl+h = pass_one_hour`r`n"
+    if ($kmp -notmatch '\[CHEAT COMMANDS\]\r?\n') { throw "default.kmp has no [CHEAT COMMANDS] section (run -Uninstall)." }
+    $kmp = $kmp -replace '\[CHEAT COMMANDS\]\r?\n', "[CHEAT COMMANDS]`r`n$binds"
+    [IO.File]::WriteAllText($kmpFile, $kmp, $latin1)
+    "Cheats bound: Ctrl+Y fly, Ctrl+U invulnerable, Ctrl+H pass one hour."
+}
 "Arena in: a new game starts on map 91 (Options.ini [Game] Start=$ini). -Uninstall puts everything back."
 if ($Run) {
     $p = Start-Process -FilePath (Join-Path $Game "u9.exe") -WorkingDirectory $Game -PassThru
