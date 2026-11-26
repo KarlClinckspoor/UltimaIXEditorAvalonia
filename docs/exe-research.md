@@ -330,3 +330,61 @@ running game on 2026-11-25, on the test arena (map 91) and on Britannia, unless 
 - **0x4F97B0** runs every frame while a creature fights. It is not a one-off "start fighting" event.
 - The friend test showed that creatures with different link numbers see each other as ENEMY in mode 1 (a team
   from the link).
+
+## 7. How NPCs find their way (read in the decompile, 2026-11-25, not yet audited)
+
+There is no navigation mesh and no precomputed grid for moving about. Movement has two layers: a road network for
+long trips, and a search made on the spot for each move.
+
+**Local moves: `NewPathfinder` (0x501D50, a process of 0x1C0 bytes).**
+- **Who makes one:** the AI's movement calls (`AI_Base::vf0D0`, `vf0D4`, `vf064`) and the highway mover (below).
+- **The grid:** each request builds a small grid of its own (0x503F70), laid along the line from the creature to its
+  goal:
+  - its cells are the creature's radius × √2 across, at most 64 units;
+  - it runs at least 10 cells along the line and at most 15 across it;
+  - each cell takes 0x28 bytes: grid x and y, flags, cost, f and h, the cell's position, the ground height found
+    there, and a link in the open list.
+- **The search:** A* (0x5044F0).
+  - Each step costs 1. The heuristic is the Manhattan distance in cells to the goal cell. The open list is kept sorted
+    by f = g + h. The four neighbours are tried, and a cell's direction bits (0x2, 0x4, 0x8, 0x10) record where it
+    came from, so the path can be traced back (0x504390, 0x504840).
+  - The search is spread over frames: each call expands a given number of cells.
+  - It finishes when it reaches the cell flagged as the goal (0x20). The best cell so far (the smallest h) is kept,
+    in case the goal can't be reached.
+- **What makes a cell walkable:** the creature's own physics body (+0x50) is moved to the cell's centre, the collision
+  code is asked for the ground there (0x565920, 0x56EAB0), and the body is put back.
+  - The cell is walkable when the height change from the cell before is under a step height (+0x40), or under a
+    larger one (+0x48) where the slope is gentle (under +0x4C), and the slope is no steeper than +0x44. These limits
+    come from the creature at construction: a value from its vf0B8 times its +0x1F8, and its +0x200; an angle of 5°
+    (0.0873) is also stored.
+  - A creature with flag 0x80000 (at +0x4C) treats every cell as walkable, at height 32767. Probably flyers.
+  - So the level's geometry, terrain and placed models alike, is what blocks a path.
+- The pathfinder's state, grid included, goes into savegames.
+- When start and goal are in the same cell, the grid is dropped and the creature walks straight.
+
+**Long trips: the highway network (`static/highway.dat`, loaded at 0x4B5730; `HighwayManager`).**
+- **The file** (checked over the whole shipped file):
+  - u32 node count (815) and u32 highway count (149);
+  - the nodes, 12 bytes each: u32 id, u32 x, u32 y, in object units;
+  - u32 size and the highways (2,612 bytes, used up exactly). Each highway is u16 from-node, to-node, node count,
+    cost and 0, then the node ids in order. The first id is always the from-node and the last the to-node, and every
+    id is one of the nodes.
+  - The cost is the path length in object units divided by 16 (for example, 53508 → 53501: 8 nodes, 1,318 units,
+    cost 82).
+  - 311 of the 815 nodes lie on a highway.
+- **The nodes are placed markers.** Node ids are the links of class 1134 markers, in 50000–64117. Node 53501's
+  (42449, 32328) is exactly the position of Britannia's marker with link 53501, (331.63, 252.56) points × 128.
+- **Who uses it:** NPC schedules (`NpcSchedule_Replace` 0x404B50, `NpcSchedule_Push` 0x404C40, and the activity
+  code at 0x4036A0…0x4043D0) move NPCs between places along highways.
+  - "HighwayManager : Out of moving npc slots!" means it moves a fixed number of NPCs at a time.
+  - "Npc trying to move on unknown highway (%d to %d)!" means a schedule names a node pair with no highway.
+- **Each leg** (0x4B4BA0) runs a pathfinder: `NewPathfinder` normally. `BeeLinePathFind` (0x4B4000), a straight line,
+  is used only when `[0xAE7C9C]` is 1. Nothing in the code writes that, so it's a leftover developer switch.
+
+**Scripted paths and patrols.**
+- **Script command 0x39** (in `Trigger_SendToObject`) starts a `PathEggFollower` (0x54B8B0). It moves an object from
+  marker to marker: the nearest class 1134 marker with the current link, then link + 1, and so on (0x54BA10).
+  Markers with consecutive links make the path.
+- **Patrols** (`ActivityPatrol::vf054`, 0x407AA0) walk between markers too. On arriving at one, they run its
+  SF Trigger A script (seen live).
+- In both, the walking between markers is again the pathfinder's job.

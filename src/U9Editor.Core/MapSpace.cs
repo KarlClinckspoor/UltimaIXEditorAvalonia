@@ -28,6 +28,8 @@ namespace U9Editor.Core
 
         public static float WorldY(int height) => height / HeightUnitsPerPoint;
         public static float WorldYFromObject(float objectZ) => objectZ / 4f / HeightUnitsPerPoint;
+        /// <summary>Object height (object units) of a world y.</summary>
+        public static float ObjectZFromWorld(float worldY) => worldY * 4f * HeightUnitsPerPoint;
 
         /// <summary>World z of a point row.</summary>
         public float WorldZ(float row) => NorthIsRowZero ? Height - row : row;

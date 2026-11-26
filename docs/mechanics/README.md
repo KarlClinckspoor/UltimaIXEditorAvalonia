@@ -42,8 +42,9 @@ What the decompile already shows for each, in one line.
    `FUN_004F9FD0`, the humanoid controller `Class_007483E8::vf1BC_004B9520`), arrow flight, and the Avatar's attack
    modes in `Class_00741CA8`.
 2. **npc-schedules.md** (activities and daily life): about 22 `Activity...` classes under `ActivityBase`, about 24
-   `MasterActivity...` coordinators, property 0x44 "Default Activity", and the global highway manager
-   (`HighwayManager` strings: moving NPC slots, highway data) that moves NPCs between towns; none of it was read.
+   `MasterActivity...` coordinators, property 0x44 "Default Activity", and the global highway manager that moves
+   NPCs between towns. The activities aren't read yet; how NPCs find their way (the per-move A* search, the highway
+   network in `static/highway.dat`, scripted marker routes) is in [npc-movement.md](npc-movement.md).
 3. **rituals.md** (the nine rituals): spells 37-45 have no costs; `BindRitual` (vtable 0x65DE90, reagent bits, pentagram
    object type 0xB60, typed incantation), the Moongate ritual (orb in a circle of stones), Sanctify, Restoration and
    Armageddon each have their own process or conversation script; the circle gate `FUN_004F4240` counts eight global flags.

@@ -272,6 +272,38 @@ Edit > Dialogue (Ctrl+G) opens `DialogueWindow`. Mouse-free pictures: `--dialogu
 a clip (the decoder matches TITAN's bit for bit: `uv run --with titan-ultima --with numpy` can check). Playback
 (PlaySound) is Windows only; nobody can hear it in a scripted run, so ask the user to listen.
 
+## Kit building (Kit tab) without the mouse
+
+Start options drive the Kit tab, so a window shot shows the result without touching the desktop:
+
+```powershell
+Start-Process -Wait -FilePath src\U9Editor.App\bin\Debug\net10.0\U9Editor.exe -ArgumentList "--gamedata gamedata --map 10 --size 1400x900 --look 160,158 --distance 22 --pitch 60 --yaw 20 --kit 10 --kit-piece 666 --kit-height 1073 --kit-corner 664 --kit-wall 20000,20000;21024,20000;21024,20768;20000,20768 --window-shot $env:TEMP\kit.png"
+```
+
+- `--kit N` opens the tab with map N's pieces; `--kit-piece T` picks one; `--kit-height Z` sets the build height;
+  `--kit-corner T` sets the wall's corner piece.
+- `--kit-wall X,Y;...` builds a wall through those points (object units) as clicks would, then Enter.
+- `--kit-place X,Y;...` places the picked piece as clicks there would, snapped. The last point is only hovered, so
+  its ghost shows. The status line then says where it snapped and to what.
+- `--kit-floor X,Y;X,Y;X,Y...` fills an area with the picked piece.
+- `--kit-room AX,AY;BX,BY;CX,CY` builds a room, with `--kit-pattern 666 --kit-corner 664 --kit-floor-type 663`.
+  `--kit-pattern` sets the wall pattern after `--kit-piece` has filled in its own.
+- `u9 kit gamedata 10 --thumbs DIR` writes the pieces' pictures (and `sheet.png`): handy for checking the thumbnail
+  drawing without the app.
+- Nothing is saved.
+- That spot on Shame, around (156, 156) points, is empty space at the floor height 1073: good for seeing new pieces
+  alone.
+- Checked on 2026-11-25:
+  - a U wall of 12 pieces of 666, seamless;
+  - with corner 664 the corners close;
+  - two simulated clicks near a wall's end snapped onto its joins (166.25, then 168.25), and the ghost showed at the
+    next one.
+- `u9 kit gamedata 10` lists the kit; `u9 wall ... --dry-run` lists a wall's pieces.
+- Arena tests `04-kit-wall` and `05-kit-room` (`tools/arena-test.ps1 -Test 05-kit-room -Run`) put a CLI-built wall
+  of Shame's kit in front of the start point on a flat map, or a whole room round it, to see and walk into in the game.
+- **Someone else's desktop:** every window-shot launch briefly opens a window. When another program is in use (check
+  the foreground window and the time since the last input), leave GUI checks for later.
+
 ## Watching the game's mechanics live (u9mon)
 
 `tools/u9mon.py` hooks u9.exe with Frida (no file changes; the exe always loads at 0x400000, so the decompile's

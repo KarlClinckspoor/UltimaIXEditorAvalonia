@@ -158,6 +158,64 @@
               <ListBox x:Name="PlaceList" FontSize="12" DoubleTapped="OnPlace" />
             </DockPanel>
           </TabItem>
+          <TabItem x:Name="KitTab" Header="Kit" FontSize="13" ToolTip.Tip="Build like the original maps: with the pieces a map is made of, snapped where its pieces join, and walls strung along a line">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,4">
+                <Grid ColumnDefinitions="Auto,*">
+                  <TextBlock Text="Pieces of" VerticalAlignment="Center" FontSize="12" Margin="0,0,6,0" />
+                  <ComboBox x:Name="KitSource" Grid.Column="1" FontSize="12" HorizontalAlignment="Stretch" SelectionChanged="OnKitSource"
+                            ToolTip.Tip="The map whose pieces (and the way they join) to build with" />
+                </Grid>
+                <TextBlock x:Name="KitSummary" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                <TextBox x:Name="KitSearch" Watermark="Filter by name or type number" FontSize="12" TextChanged="OnKitSearch" />
+              </StackPanel>
+              <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,6,0,0">
+                <TextBlock x:Name="KitJoins" FontSize="11" Opacity="0.8" TextWrapping="Wrap" MaxHeight="64" />
+                <WrapPanel>
+                  <CheckBox x:Name="KitSnap" Content="Snap to pieces" IsChecked="True" FontSize="12" Margin="0,0,8,0"
+                            ToolTip.Tip="Put a piece where the source map puts that kind next to a piece already here, else on that piece's turned grid" />
+                  <TextBlock Text="Turns" VerticalAlignment="Center" FontSize="12" Margin="0,0,4,0" />
+                  <ComboBox x:Name="KitAngle" SelectedIndex="3" FontSize="12" ToolTip.Tip="Turn steps for [ and ], and for a wall's corners">
+                    <ComboBoxItem Content="free" />
+                    <ComboBoxItem Content="15°" />
+                    <ComboBoxItem Content="45°" />
+                    <ComboBoxItem Content="90°" />
+                  </ComboBox>
+                </WrapPanel>
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                  <TextBlock Text="Build height" VerticalAlignment="Center" FontSize="12" Margin="0,0,6,0" />
+                  <TextBox x:Name="KitHeight" Grid.Column="1" FontSize="12" Watermark="under the mouse" LostFocus="OnKitHeight" KeyDown="OnKitHeightKey"
+                           ToolTip.Tip="Object height to build at: the mouse also meets a level plane there, so empty space can be built in. Empty: whatever is under the mouse" />
+                  <Button Grid.Column="2" Content="Take" Click="OnKitTakeHeight" Margin="4,0,0,0" FontSize="12" ToolTip.Tip="The selected object's height" />
+                </Grid>
+                <Grid ColumnDefinitions="Auto,*,Auto,70">
+                  <TextBlock Text="Wall pattern" VerticalAlignment="Center" FontSize="12" Margin="0,0,6,0" />
+                  <TextBox x:Name="KitPattern" Grid.Column="1" FontSize="12" Watermark="types, e.g. 666,664"
+                           ToolTip.Tip="The types a wall cycles through, in order. Picking a piece fills in it and the piece the source map most often puts after it" />
+                  <TextBlock Grid.Column="2" Text="Corner" VerticalAlignment="Center" FontSize="12" Margin="6,0,4,0" />
+                  <TextBox x:Name="KitCorner" Grid.Column="3" FontSize="12" Watermark="none"
+                           ToolTip.Tip="A piece for the wall's corners (a pillar such as Shame's 664): it goes one step past the last piece of a leg, and the next leg starts from it" />
+                </Grid>
+                <Grid ColumnDefinitions="Auto,70,*">
+                  <TextBlock Text="Room floor" VerticalAlignment="Center" FontSize="12" Margin="0,0,6,0" />
+                  <TextBox x:Name="KitFloor" Grid.Column="1" FontSize="12" Watermark="none"
+                           ToolTip.Tip="The tile a room's inside is filled with (Shame's 663 is floor and ceiling in one); empty: walls only" />
+                  <TextBlock Grid.Column="2" Text="Room: three clicks, the first side then the depth" Opacity="0.6" FontSize="11" VerticalAlignment="Center" Margin="6,0,0,0" TextWrapping="Wrap" />
+                </Grid>
+                <WrapPanel>
+                  <Button x:Name="KitPlaceButton" Content="Place" Click="OnKitPlace" Margin="0,0,4,4" ToolTip.Tip="Place the picked piece: it follows the mouse; click to put it down. [ ] turn it, Esc stops" />
+                  <Button Content="Draw wall" Click="OnKitWall" Margin="0,0,4,4" ToolTip.Tip="Click the wall's points; Enter builds it, Backspace takes the last point back, Esc cancels" />
+                  <Button Content="Fill floor" Click="OnKitFloor" Margin="0,0,4,4" ToolTip.Tip="Click the corners of an area; Enter fills it with the picked piece (a floor tile such as Shame's 663) on a grid along the first edge" />
+                  <Button Content="Room" Click="OnKitRoom" Margin="0,0,4,4" ToolTip.Tip="Click the first side's two ends, then the depth: walls of the pattern all round (sides made whole wall steps so they close), the corner piece on the corners, the room floor inside. Enter builds" />
+                  <CheckBox x:Name="KitFlip" Content="Other face out" FontSize="12" Margin="0,0,4,4" ToolTip.Tip="Run the wall's pieces the other way round" />
+                  <Button Content="Show one" Click="OnKitShow" Margin="0,0,4,4" ToolTip.Tip="Look at a piece of this kind on this map (the source map's first, when this is the source)" />
+                </WrapPanel>
+                <TextBlock Opacity="0.6" FontSize="11" TextWrapping="Wrap"
+                           Text="Original maps are sections each laid on its own turned grid, with the same pieces reused. Pieces go in the fixed file, copied from one of their kind here or on the source map." />
+              </StackPanel>
+              <ListBox x:Name="KitList" FontSize="12" SelectionChanged="OnKitPicked" DoubleTapped="OnKitPlace" />
+            </DockPanel>
+          </TabItem>
           <TabItem Header="Contents" FontSize="13">
             <ScrollViewer>
               <StackPanel Spacing="4">

@@ -73,7 +73,7 @@ namespace U9Editor.App
             View.ObjectHovered += o => objectStatus = o?.ToString();
             View.ObjectPicked += o => { objectStatus = o != null ? "selected " + o : null; Select(o); };
             View.ObjectDragging += (o, x, y, z) => StatusText.Text = $"moving {o.Name ?? "type " + o.Source.Type} to ({x / 128.0:F2}, {y / 128.0:F2}) z {z}   (Esc puts it back)";
-            View.ObjectDragged += (o, x, y, z) => Edit(() => { editor.Move(o, x, y, z); StatusText.Text = Moved(o); });
+            View.ObjectDragged += (o, x, y, z) => Edit(() => { editor.Move(o, x, y, z, View.DragRotation); StatusText.Text = Moved(o); });
             View.GroupDragged += (g, dx, dy) => Edit(() =>
             {
                 editor.MoveGroup(g, dx, dy, 0, View.FollowTerrain);
@@ -84,6 +84,7 @@ namespace U9Editor.App
             View.FollowTerrain = true;
             View.PlaceAt += OnPlaceAt;
             View.PasteAt += OnPasteAt;
+            InitKit();
             RefreshPrefabList();
             ApplyTheme(Program.ThemeAtStart ?? settings.Theme, remember: Program.ThemeAtStart == null);
             View.ModeChanged += ShowMode;
@@ -130,6 +131,7 @@ namespace U9Editor.App
                 OnSceneScrub(null, null);      // shows that moment, camera points hidden (also at 0, where the slider does not change)
             }
             PrefabsAtStart();
+            KitAtStart();
             View.Redraw();
         }
 
@@ -167,6 +169,7 @@ namespace U9Editor.App
                     if (t != TypeTable.PlaceholderType && (typeNames?[t] != null || typeTable[t].DefaultModel > 0))
                         allTypes.Add(new TypeItem { Type = t, Name = typeNames?[t] });
             maps = g.Maps();
+            KitGameOpened();
             MapBox.ItemsSource = maps;
             var pick = maps.FirstOrDefault(m => m.Number == mapNumber) ?? maps.FirstOrDefault(m => m.Number == 9) ?? maps.FirstOrDefault();
             MapBox.SelectedItem = pick;
@@ -180,6 +183,7 @@ namespace U9Editor.App
 
         void LoadMap(MapEntry m)
         {
+            KitMapLeaving();
             try
             {
                 // a map with unsaved terrain edits keeps them while other maps are looked at
@@ -452,6 +456,7 @@ namespace U9Editor.App
 
         void OnUndo(object sender, RoutedEventArgs e)
         {
+            DropKitTemporaries();
             string d = editor?.Undo();
             StatusText.Text = d != null ? $"Undid {d}." : "Nothing to undo.";
             UpdateTitle();
@@ -459,6 +464,7 @@ namespace U9Editor.App
 
         void OnRedo(object sender, RoutedEventArgs e)
         {
+            DropKitTemporaries();
             string d = editor?.Redo();
             StatusText.Text = d != null ? $"Redid {d}." : "Nothing to redo.";
             UpdateTitle();
@@ -472,6 +478,7 @@ namespace U9Editor.App
 
         void OnSave(object sender, RoutedEventArgs e)
         {
+            DropKitTemporaries();
             var written = new List<string>();
             try
             {
@@ -490,6 +497,7 @@ namespace U9Editor.App
 
         void OnClosing(object sender, WindowClosingEventArgs e)
         {
+            DropKitTemporaries();       // a ghost or wall preview is not an unsaved change
             if (!closeAnyway && DialogueUnsaved)
             {
                 e.Cancel = true;
@@ -1126,6 +1134,7 @@ namespace U9Editor.App
                 }
                 return false;
             }
+            if (KitKey(e.Key)) return true;
             switch (e.Key)
             {
                 case Key.B:

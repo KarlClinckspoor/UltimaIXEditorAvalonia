@@ -33,6 +33,10 @@ namespace U9Editor.Cli
                     case "camera-point" when args.Length >= 9: return CameraPointSet(args);
                     case "scenes" when args.Length == 3: return Scenes(args[1], int.Parse(args[2]));
                     case "script" when args.Length == 3: return ScriptPrint(args[1], int.Parse(args[2]));
+                    case "wall" when args.Length >= 3: return KitCommands.Wall(args[1], int.Parse(args[2]), args.Skip(3).ToArray());
+                    case "floor" when args.Length >= 3: return KitCommands.Floor(args[1], int.Parse(args[2]), args.Skip(3).ToArray());
+                    case "room" when args.Length >= 3: return KitCommands.Room(args[1], int.Parse(args[2]), args.Skip(3).ToArray());
+                    case "kit" when args.Length >= 3: return KitCommands.Print(args[1], int.Parse(args[2]), args.Skip(3).ToArray());
                     case "script-places" when args.Length >= 3: return ScriptPlaces.Run(args[1], args.Skip(2).ToArray());
                     case "script-uses" when args.Length >= 3: return ScriptUses.Run(args[1], args[2], args.Skip(3).ToArray());
                     case "script-compile" when args.Length == 4: return ScriptCompile(args[1], int.Parse(args[2]), args[3]);
@@ -94,7 +98,23 @@ namespace U9Editor.Cli
   u9 objects <gamedata> <map> [fixed|nonfixed] [--type n] [--props]
                                              list a map's objects: file, type, name, point x / row, z, link, model,
                                              and with --props their property segments
-  u9 scenes <gamedata> <map>                 the map's in-engine scenes: camera points (type 2218) and the moves
+  u9 kit <gamedata> <map> [--type N] [--max N] [nonfixed]
+                                             the pieces a map is built from (its fixed objects by default): use
+                                             counts, model bounds, and the joins that recur between them (offset
+                                             in the first piece's frame, quarter turns)
+  u9 wall <gamedata> <map> --types a,b,.. --z Z [--kit N] [--angle 90] [--corner T] [--flip] [--dry-run] [--file F] x,y x,y ...
+                                             pieces of map N's kit (default: this map's) strung along the points
+                                             (object units), turned along each leg, cycling the types; written to
+                                             static/fixed.<map> (first time keeping .orig), or into fixed file F
+  u9 floor <gamedata> <map> --type T --z Z [--kit N] [--angle 90] [--dry-run] [--file F] x,y x,y x,y ...
+                                             tiles of type T filling the polygon, on a grid along its first edge
+                                             (the tile's joins to itself, else its size); written like u9 wall
+  u9 room <gamedata> <map> --types W --z Z [--corner C] [--floor F] [--kit N] [--flip] [--dry-run] [--file F] a b c
+                                             a rectangular room: first side from a towards b, depth towards c,
+                                             both made whole wall steps so the walls close; corner pieces on the
+                                             corners, floor tiles inside (Shame: --types 666 --corner 664 --floor 663)
+  u9 kit ... --thumbs DIR                    also writes a picture of each listed piece's model (and sheet.png)
+  u9 scenes <gamedata> <map>                the map's in-engine scenes: camera points (type 2218) and the moves
                                              the trigger scripts chain between them
   u9 combat <gamedata>                       u9.exe's combat tables (weapons, armour, natural attacks, damage
                                              multipliers) with the pending patches, and those patches

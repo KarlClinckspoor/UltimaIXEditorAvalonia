@@ -112,7 +112,7 @@ namespace U9Editor.Core.Tests
             ed.Undo();
             Assert.Equal(before, ed.Text.Lines.ToArray());
             ed.Redo();
-            Assert.False(ed.Text.Lines.Any(l => l != null && !TextTable.IsMarker(l) && System.Text.RegularExpressions.Regex.IsMatch(l, @"(?<![A-Za-z])Raven(?![A-Za-z])")));
+            Assert.DoesNotContain(ed.Text.Lines, l => l != null && !TextTable.IsMarker(l) && System.Text.RegularExpressions.Regex.IsMatch(l, @"(?<![A-Za-z])Raven(?![A-Za-z])"));
         }
 
         [Fact]

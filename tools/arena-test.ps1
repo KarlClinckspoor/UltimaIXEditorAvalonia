@@ -59,9 +59,11 @@ if ($Uninstall) {
 }
 
 if (Test-Path $backup) { throw "$backup exists: the arena is already in (run -Uninstall first)." }
-foreach ($rel in $added + @("runtime\NPC.FLX", "static\sappear.flx", "sound\SFXTMPL.FLX")) {
+foreach ($rel in $added) {
     if (-not (Test-Path (Join-Path $stage $rel))) { throw "$stage has no $rel." }
 }
+# the data files a test changes are optional: those it does not have stay the game's own
+$dataFiles = @("runtime\NPC.FLX", "static\sappear.flx", "sound\SFXTMPL.FLX") | Where-Object { Test-Path (Join-Path $stage $_) }
 foreach ($rel in $added) { if (Test-Path (Find-File $rel)) { throw "$(Find-File $rel) already exists; not overwriting it." } }
 
 New-Item -ItemType Directory -Force (Join-Path $backup "runtime"), (Join-Path $backup "static"), (Join-Path $backup "sound") | Out-Null
@@ -70,7 +72,7 @@ $sg = Join-Path $Game "savegame"
 $names = @(); if (Test-Path $sg) { $names = @(Get-ChildItem -LiteralPath $sg -File | ForEach-Object { $_.Name }) }
 [IO.File]::WriteAllLines((Join-Path $backup "savegame-before.txt"), [string[]]$names)
 
-foreach ($rel in @("runtime\NPC.FLX", "static\sappear.flx", "sound\SFXTMPL.FLX")) { Copy-Item (Join-Path $stage $rel) (Find-File $rel) -Force }
+foreach ($rel in $dataFiles) { Copy-Item (Join-Path $stage $rel) (Find-File $rel) -Force }
 foreach ($rel in $added) { Copy-Item (Join-Path $stage $rel) (Join-Path $Game $rel) -Force }
 
 # [Game] Start=<absolute path of arena.ini>: the game's developer start reads it as the new game's start

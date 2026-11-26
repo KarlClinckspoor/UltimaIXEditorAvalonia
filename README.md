@@ -25,6 +25,12 @@ It reads and writes the game's own files, so changes show up in the real game.
   turned in quarter turns, its edge blended into the ground there. Objects come whole (properties, chained
   properties, what containers hold), with new link numbers and copies of the scripts they run. Prefabs can be saved
   to a library and pasted into any map later.
+- **Kit building** (Kit tab): build like the original dungeons, which are sections of reused pieces each laid on
+  its own turned grid. Pick a map's pieces (its "kit", with pictures of the models) and place them so they snap where
+  that map joins them (a ghost follows the mouse). Or draw walls along clicked points with square corners and corner
+  pillars, fill floors, or build a whole room in three clicks (walls that close, pillars, floor and ceiling), at a
+  build height for empty space. `u9 kit`, `u9 wall`, `u9 floor` and `u9 room` do the same from the command line. See
+  [docs/level-kits.md](docs/level-kits.md).
 - **Combat balance** (Edit > Combat balance, Ctrl+B): how many hits the Avatar needs to kill each creature with each
   weapon, and how many each creature needs to kill the Avatar in each armour set, worked out from the game's own
   tables and damage rules; and editing of weapons, shields, armour, creatures' natural attacks and damage multipliers
@@ -70,6 +76,12 @@ Usable for object, link, terrain, contents and model editing on any map. Work is
    camera; an add-object tool that filters the types; finding objects by property, model or contents; and editing
    properties, both type-wide in `TYPES.DAT` (a sword's damage and damage type, health) and per object, every field
    with a tooltip.
+9. **Kit building** (done): build from the pieces a map is made of, snapped where its pieces join; walls, floors and
+   rooms ([docs/level-kits.md](docs/level-kits.md)). Checked in the game: a room of Shame's pieces on a new map
+   closes and its walls stop the Avatar.
+10. **Highway editor** (planned): the road network NPCs travel between places on (`static/highway.dat`, its points
+    being placed markers; [docs/mechanics/npc-movement.md](docs/mechanics/npc-movement.md)). Show it over the map,
+    add and move points (marker and file entry together), join them into highways, and recompute each highway's cost.
 
 ## Getting started
 
@@ -191,6 +203,28 @@ library keeps prefabs as `.u9prefab` files (JSON: the records, segments and cont
 <out.u9prefab> [--margin n] [--no-ground]` and `u9 prefab-paste <gamedata> <map> <x> <row> <in.u9prefab> [--turn k]
 [--ground none|heights|textures] [--keep-heights] [--no-blend] [--keep-links] [--share-scripts] [--clear]
 [--together]`.
+
+Kit building (Kit tab): pick the map whose pieces to build with ("Pieces of"; the current map at first). The list
+shows its pieces by use, with a picture of each model (drawn in the background) and its size, and the joins of the
+one picked: where the source map puts other pieces next to it, in its own frame. **Fill floor** fills the corners
+you click with the picked tile. **Room** takes three clicks (the first side, then the depth; a fourth moves the
+depth). It builds the wall pattern round a rectangle whose sides are made whole wall steps so they close, the Corner
+piece on the corners, and the Room floor tile inside (Shame: 666, 664, 663). Kit pieces are one-sided: the game
+draws only the sides meant to be seen, while the editor draws both. So Room turns walls and corners to face the room.
+For a freehand wall, "Other face out" picks the side. Checked in the game: a room of Shame's pieces on a new map
+closes, and its walls stop the Avatar. **Place** makes the piece follow the mouse as a ghost. Near a piece already here it
+snaps where the source map would put it, else onto that piece's turned grid. `[` and `]` turn it, a click puts it
+down (one undo step), and Esc stops. **Draw wall** strings the wall pattern (the picked piece, or it and the piece
+that usually follows it) along clicked points. Each leg's pieces are turned along it, corners turn in the Turns
+steps (90° by default), and an optional Corner piece (Shame's pillar 664) goes at each turn. A preview shows after
+every click; Enter builds, Backspace takes the last point back, Esc cancels. **Build height** gives the mouse a level
+plane to land on: in dungeons the terrain is far below the floors, and new levels start in empty space. Take copies
+the selected object's height. With the tab open, dragging a kit piece in Move mode snaps it too. New pieces go in the
+fixed file as copies of one of their type, here or on the source map, so Shame's kit builds on any map. On the
+command line: `u9 kit <gamedata> <map> [--type N] [--thumbs DIR]`, `u9 wall <gamedata> <map> --types 666 --z 1073
+[--kit N] [--angle 90] [--corner 664] [--flip] [--dry-run] [--file F] x,y x,y ...`, `u9 floor ... --type 663 x,y x,y
+x,y ...` and `u9 room ... --types 666 --corner 664 --floor 663 a b c`. How the original maps are built:
+[docs/level-kits.md](docs/level-kits.md).
 
 Combat balance (Edit > Combat balance, Ctrl+B) opens a window over the game folder. Its Balance tab sets up the
 Avatar (HP, strength, attack, armour per slot or a whole set, shield) and shows two heat maps: the mean number of hits

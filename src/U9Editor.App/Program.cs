@@ -46,6 +46,20 @@ namespace U9Editor.App
         public static string TabAtStart;
         /// <summary>--select X,ROW: select the object nearest that point (points, fractions allowed).</summary>
         public static float SelectX = float.NaN, SelectRow = float.NaN;
+        /// <summary>--kit N: the Kit tab with map N's pieces; --kit-piece T picks one; --kit-height Z sets the build
+        /// height; --kit-wall X,Y;X,Y;...: builds a wall of the pattern through those points (object units) at the start.</summary>
+        public static int KitAtStart = -1, KitPieceAtStart = -1, KitHeightAtStart = -1, KitCornerAtStart = -1;
+        public static string KitWallAtStart;
+        /// <summary>--kit-place X,Y[;X,Y...]: places the picked piece as clicks there would (snapped), the last one only
+        /// hovered (its ghost shown), so a window shot shows both (object units; the build height or the ground).</summary>
+        public static string KitPlaceAtStart;
+        /// <summary>--kit-floor X,Y;X,Y;X,Y...: fills that area with the picked piece at the start (before --kit-place).</summary>
+        public static string KitFloorAtStart;
+        /// <summary>--kit-pattern A,B: the wall pattern (after --kit-piece has filled in its own).</summary>
+        public static string KitPatternAtStart;
+        /// <summary>--kit-room AX,AY;BX,BY;CX,CY: builds a room at the start (walls from the pattern, --kit-corner, --kit-floor-type).</summary>
+        public static string KitRoomAtStart;
+        public static int KitFloorTypeAtStart = -1;
 
         [STAThread]
         public static void Main(string[] args)
@@ -85,6 +99,16 @@ namespace U9Editor.App
                 else if (a == "--paste" && i + 1 < args.Length) PasteAtStart = Ints(args[++i]);
                 else if (a == "--paste-preview" && i + 1 < args.Length) PastePreviewAtStart = Ints(args[++i]);
                 else if (a == "--tab" && i + 1 < args.Length) TabAtStart = args[++i];
+                else if (a == "--kit" && i + 1 < args.Length) int.TryParse(args[++i], out KitAtStart);
+                else if (a == "--kit-piece" && i + 1 < args.Length) int.TryParse(args[++i], out KitPieceAtStart);
+                else if (a == "--kit-height" && i + 1 < args.Length) int.TryParse(args[++i], out KitHeightAtStart);
+                else if (a == "--kit-wall" && i + 1 < args.Length) KitWallAtStart = args[++i];
+                else if (a == "--kit-corner" && i + 1 < args.Length) int.TryParse(args[++i], out KitCornerAtStart);
+                else if (a == "--kit-place" && i + 1 < args.Length) KitPlaceAtStart = args[++i];
+                else if (a == "--kit-floor" && i + 1 < args.Length) KitFloorAtStart = args[++i];
+                else if (a == "--kit-pattern" && i + 1 < args.Length) KitPatternAtStart = args[++i];
+                else if (a == "--kit-room" && i + 1 < args.Length) KitRoomAtStart = args[++i];
+                else if (a == "--kit-floor-type" && i + 1 < args.Length) int.TryParse(args[++i], out KitFloorTypeAtStart);
                 else if (a == "--select" && i + 1 < args.Length)
                 {
                     var xy = args[++i].Split(',');

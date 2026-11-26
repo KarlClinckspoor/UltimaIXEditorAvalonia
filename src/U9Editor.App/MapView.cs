@@ -220,6 +220,46 @@ namespace U9Editor.App
         }
         public event Action<TerrainHit> PlaceAt;
 
+        // ---- kit building: in Place mode with KitMode on, hovers and clicks report the point under the mouse
+
+        /// <summary>A point under the mouse for kit building: map position and height (object units), and the object whose model it lies on.</summary>
+        public readonly record struct KitPoint(float MapX, float MapY, float Z, SceneObject On);
+
+        /// <summary>While on (in Place mode), hovers raise <see cref="KitHover"/> and clicks <see cref="KitClick"/> instead of <see cref="PlaceAt"/>.</summary>
+        public bool KitMode { get; set; }
+        /// <summary>A building height (object units): the mouse ray also meets a level plane there, so empty space can be built in; null: none.</summary>
+        public float? WorkHeight { get; set; }
+        /// <summary>An object the kit point ignores (the ghost of the piece being placed).</summary>
+        public SceneObject KitIgnore { get; set; }
+        public event Action<KitPoint?> KitHover;
+        public event Action<KitPoint?> KitClick;
+
+        /// <summary>
+        /// What the mouse ray meets first: a model (shown kinds, not <see cref="KitIgnore"/>), the work-height plane, or
+        /// the terrain (when shown); null for nothing.
+        /// </summary>
+        public KitPoint? KitPointAt(Point p)
+        {
+            if (space == null || objects == null) return null;
+            Camera.Ray((float)p.X, (float)p.Y, (float)Bounds.Width, (float)Bounds.Height, out var origin, out var dir);
+            var th = PickAt(p);
+            float best = th.Hit && State.ShowTerrain ? Vector3.Dot(th.World - origin, dir) : float.PositiveInfinity;
+            Vector3? at = best < float.PositiveInfinity ? th.World : null;
+            if (WorkHeight is { } wh && RayToHeight(p, MapSpace.WorldYFromObject(wh), out var onPlane))
+            {
+                float t = Vector3.Dot(onPlane - origin, dir);
+                if (t > 0 && t < best) { best = t; at = onPlane; }
+            }
+            SceneObject on = null;
+            if (ModelsDrawn)
+            {
+                var m = objects.PickModel(models, space, origin, dir, best, o => KindShown(o) && o != KitIgnore, out float mt);
+                if (m != null) { on = m; at = origin + dir * mt; }
+            }
+            if (at is not { } w) return null;
+            return new KitPoint(w.X * MapSpace.ObjectUnitsPerPoint, space.Row(w.Z) * MapSpace.ObjectUnitsPerPoint, MapSpace.ObjectZFromWorld(w.Y), on);
+        }
+
         // ---- pasting a prefab: its footprint follows the mouse, a click pastes it there
 
         (int W, int H, int Margin, int North)? paste;
@@ -406,6 +446,7 @@ namespace U9Editor.App
             dragStartWorld = ob.World;
             dragX = ob.Source.MapX; dragY = ob.Source.MapY; dragZ = ob.Source.Z;
             dragGroundOffset = ob.Source.Z - Editor.GroundZ(dragX, dragY);
+            DragRotation = null;
         }
 
         bool NearSelection(SceneObject o, Point p)
@@ -424,6 +465,14 @@ namespace U9Editor.App
             return (sx - p.X) * (sx - p.X) + (sy - p.Y) * (sy - p.Y) <= 12 * 12;
         }
 
+        /// <summary>
+        /// While set, dragging one object asks it where the object would go for a spot (map units and height); a
+        /// non-null answer (position and rotation) replaces the spot. Kit building snaps pieces with it.
+        /// </summary>
+        public Func<SceneObject, int, int, int, (int X, int Y, int Z, Quaternion Rotation)?> DragSnap { get; set; }
+        /// <summary>The rotation a snapped drag ended with (null: the object keeps its own).</summary>
+        public Quaternion? DragRotation { get; private set; }
+
         void DragObjectTo(Point p)
         {
             if (!RayToHeight(p, dragStartWorld.Y, out var at)) return;
@@ -431,13 +480,20 @@ namespace U9Editor.App
             int mx = Math.Clamp((int)MathF.Round(w.X * MapSpace.ObjectUnitsPerPoint), 0, space.Width * (int)MapSpace.ObjectUnitsPerPoint - 1);
             int my = Math.Clamp((int)MathF.Round(space.Row(w.Z) * MapSpace.ObjectUnitsPerPoint), 0, space.Height * (int)MapSpace.ObjectUnitsPerPoint - 1);
             int z = FollowTerrain ? Math.Clamp(Editor.GroundZ(mx, my) + dragGroundOffset, 0, 0xFFFF) : dragObject.Source.Z;
+            var rotation = dragObject.Source.Rotation;
+            DragRotation = null;
+            if (dragGroup == null && DragSnap?.Invoke(dragObject, mx, my, z) is { } s)
+            {
+                (mx, my, z, rotation) = s;
+                DragRotation = rotation;
+            }
             dragX = mx; dragY = my; dragZ = z;
             if (dragGroup != null)
             {
                 foreach (var (o, x, y, gz) in Editor.GroupMoveTargets(dragGroup, mx - dragObject.Source.MapX, my - dragObject.Source.MapY, 0, FollowTerrain))
                     Preview(o, x, y, gz, o.Source.Rotation);
             }
-            else Preview(dragObject, mx, my, z, dragObject.Source.Rotation);
+            else Preview(dragObject, mx, my, z, rotation);
             ObjectDragging?.Invoke(dragObject, mx, my, z);
         }
 
@@ -720,6 +776,7 @@ namespace U9Editor.App
                 Hovered?.Invoke(hit);
                 return;
             }
+            if (Placing && KitMode) KitHover?.Invoke(KitPointAt(p));
             var ob = PickObjectAt(p, hit);
             int hid = ob?.Id ?? -1;
             if (hid != State.HoverObject) { State.HoverObject = hid; Redraw(); }
@@ -787,6 +844,11 @@ namespace U9Editor.App
             {
                 var ph = PickAt(at);
                 if (ph.Hit) { hoverPointX = ph.X; hoverPointRow = ph.Row; UpdatePasteRegion(); PasteAt?.Invoke(pasteX, pasteRow); }
+                return;
+            }
+            if (click && Placing && KitMode)
+            {
+                KitClick?.Invoke(KitPointAt(at));
                 return;
             }
             if (click && Placing)
